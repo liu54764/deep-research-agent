@@ -1,0 +1,26 @@
+{
+  "baselineVersion" : "v1",
+  "createdAt" : "2026-11-16T10:36:44.540068500Z",
+  "datasetSha256" : "bac81b3dd99f63ca2902cee190e83ce9d81b4d459ba9e1de435f4d6a7f5b5682",
+  "datasetVersions" : [ "2026-11-16" ],
+  "questions" : 8,
+  "depth" : "QUICK",
+  "judgeEnabled" : true,
+  "judgeModel" : "deepseek-reasoner",
+  "metrics" : {
+    "carStrict" : 0.9915966386554622,
+    "carWeighted" : 0.9957983193277311,
+    "hfr" : 1.0,
+    "csr" : 0.9915966386554622,
+    "gcr" : 0.6996904024767803,
+    "contradictionRate" : 0.014925373134328358,
+    "claimPrecision" : 0.31343283582089554,
+    "anchorRate" : 1.0,
+    "urlLiveRate" : 1.0,
+    "latencyP50Ms" : 131014,
+    "latencyP95Ms" : 169342,
+    "costMicros" : 1428456,
+    "judgeCostMicros" : 3321584,
+    "successRate" : 1.0
+  }
+}

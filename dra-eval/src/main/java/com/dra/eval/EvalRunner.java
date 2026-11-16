@@ -175,7 +175,7 @@ public class EvalRunner implements ApplicationRunner, ExitCodeGenerator {
         // A run that fails its own gate must not become the reference: freezing it would
         // bless a failing measurement as the baseline for future comparisons.
         BaselineOutcome baseline = baseline(dataset, metrics, depth, judgeEnabled,
-                thresholds.passed() && !outcome.infraFailure(), true);
+                thresholds.passed() && !confidenceFailure && !outcome.infraFailure(), true);
 
         int code = decide(results, outcome.infraFailure(), mode, judgeEnabled,
                 labels.calibration(), thresholds, baseline.diff(), confidenceFailure);
