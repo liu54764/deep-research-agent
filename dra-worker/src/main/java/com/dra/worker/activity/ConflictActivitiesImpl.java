@@ -47,7 +47,9 @@ public class ConflictActivitiesImpl implements ResearchActivities.Conflict {
 
     private static final Logger log = LoggerFactory.getLogger(ConflictActivitiesImpl.class);
     private static final String PROMPT_VERSION = "conflict.v1";
-    private static final int MAX_CLAIMS = 20;
+    // Conflict detection used to see only the first 20 claims; with atomic claims that
+    // is barely half the set, so disagreements further down were never considered.
+    private static final int MAX_CLAIMS = 30;
     private static final int MAX_CONFLICTS = 5;
     private static final Set<String> VERDICTS = Set.of("SUPPORTED", "PARTIAL");
 

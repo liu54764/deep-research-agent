@@ -28,3 +28,6 @@ eval/cache/
 
 # Load-test artifacts (machine-local)
 perf/runs/
+
+# Local service logs (api/worker/eval stdout)
+.run/

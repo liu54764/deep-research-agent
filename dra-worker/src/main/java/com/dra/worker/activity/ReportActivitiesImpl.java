@@ -45,7 +45,9 @@ public class ReportActivitiesImpl implements ResearchActivities.Report {
 
     private static final Logger log = LoggerFactory.getLogger(ReportActivitiesImpl.class);
     private static final String PROMPT_VERSION = "report.v1";
-    private static final int MAX_CLAIMS = 24;
+    // Atomic claims (claim.v2) need more rows for the same content; keeping the old 24
+    // would silently drop conclusions and undo the coverage GCR measures.
+    private static final int MAX_CLAIMS = 32;
     private static final int MAX_REPAIRS = 1;
 
     private final LlmPort llm;
@@ -183,7 +185,7 @@ public class ReportActivitiesImpl implements ResearchActivities.Report {
         meta.put("depth", nullToEmpty(bundle.depth()));
         meta.put("stopReason", nullToEmpty(bundle.stopReason()));
         meta.put("question", nullToEmpty(bundle.question()));
-        meta.put("promptVersions", "plan.v1,extract.v1,claim.v1,verify.v1,conflict.v1,report.v1");
+        meta.put("promptVersions", "plan.v1,extract.v1,claim.v2,verify.v1,conflict.v1,report.v1");
         meta.put("models", String.join(",", List.of(
                 properties.getPlanModel(), properties.getExtractModel(),
                 properties.getClaimModel(), properties.getVerifyModel())));

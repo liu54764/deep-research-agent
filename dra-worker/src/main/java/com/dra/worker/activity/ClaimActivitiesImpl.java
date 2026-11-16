@@ -41,8 +41,10 @@ import java.util.stream.Collectors;
 public class ClaimActivitiesImpl implements ResearchActivities.Claim {
 
     private static final Logger log = LoggerFactory.getLogger(ClaimActivitiesImpl.class);
-    private static final String PROMPT_VERSION = "claim.v1";
-    private static final int MAX_CLAIMS = 30;
+    private static final String PROMPT_VERSION = "claim.v2";
+    // Atomic statements need more rows to express the same content; the old 30 cap was
+    // hit exactly on every DEEP question, which silently truncated coverage.
+    private static final int MAX_CLAIMS = 45;
     private static final int MAX_EVIDENCE_IN_PROMPT = 40;
 
     private final LlmPort llm;
@@ -79,8 +81,8 @@ public class ClaimActivitiesImpl implements ResearchActivities.Claim {
         Map<String, EvidenceView> byId = new LinkedHashMap<>();
         evidence.forEach(view -> byId.putIfAbsent(view.id(), view));
 
-        String system = promptLoader.load("prompts/claim.v1.system.md");
-        String user = promptLoader.render(promptLoader.load("prompts/claim.v1.user.md"), Map.of(
+        String system = promptLoader.load("prompts/claim.v2.system.md");
+        String user = promptLoader.render(promptLoader.load("prompts/claim.v2.user.md"), Map.of(
                 "subQuestions", formatSubQuestions(input),
                 "evidence", formatEvidence(evidence),
                 "max", String.valueOf(MAX_CLAIMS)));
