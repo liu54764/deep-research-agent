@@ -132,7 +132,7 @@ class BaselineTest {
                 0, 0, 0, 0, 0.0,
                 citationsJudged, (int) Math.round(car * citationsJudged), 0, 0, 0,
                 claimsWithCitations, car, car, 1.0, 1.0,
-                2, 2.0, 2.0, 0.9,
+                2, 2.0, 2.0, 0.9, 1,
                 3, 0, 0.0, 1.0,
                 citationsJudged, 0, 0, 0, 0,
                 0, Map.of(), 4);

@@ -41,6 +41,8 @@ public record EvalMetrics(
         double coveredWeight,
         double totalWeight,
         double gcr,
+        /** Questions whose J2 verdict parsed; GCR only covers these. */
+        int gcrQuestions,
         int exactClaimsJudged,
         int contradicted,
         double contradictionRate,
@@ -86,6 +88,9 @@ public record EvalMetrics(
         int keyPointsJudged = results.stream().mapToInt(r -> r.judge().keyPointsJudged()).sum();
         double coveredWeight = results.stream().mapToDouble(r -> r.judge().coveredWeight()).sum();
         double totalWeight = results.stream().mapToDouble(r -> r.judge().totalWeight()).sum();
+        // A failed J2 contributes 0/0 and would otherwise vanish from the ratio, making
+        // the aggregate look complete when only a subset of questions was measured.
+        int gcrQuestions = (int) results.stream().filter(r -> r.judge().totalWeight() > 0).count();
         int exactClaimsJudged = results.stream().mapToInt(r -> r.judge().exactClaimsJudged()).sum();
         int goldSupported = results.stream().mapToInt(r -> r.judge().goldSupported()).sum();
         int contradicted = results.stream().mapToInt(r -> r.judge().contradicted()).sum();
@@ -120,6 +125,7 @@ public record EvalMetrics(
                 claimsWithCitations == 0 ? 0.0 : (double) claimsWithSupport / claimsWithCitations,
                 keyPointsJudged, coveredWeight, totalWeight,
                 totalWeight == 0 ? 0.0 : coveredWeight / totalWeight,
+                gcrQuestions,
                 exactClaimsJudged, contradicted,
                 exactClaimsJudged == 0 ? 0.0 : (double) contradicted / exactClaimsJudged,
                 exactClaimsJudged == 0 ? 0.0 : (double) goldSupported / exactClaimsJudged,

@@ -81,6 +81,11 @@ public class JudgeClient {
         }
         if (node == null) {
             invalidOutputs.incrementAndGet();
+            // Without the raw tail an unparseable verdict is undiagnosable after the fact:
+            // a truncated response (reasoning tokens eating max-tokens) looks identical to
+            // a model that simply ignored the schema.
+            log.warn("judge {} returned no parseable JSON after repair (chars={}, completionTokens={}), tail: {}",
+                    kind, length(call.content()), call.completionTokens(), tail(call.content(), 300));
             throw new JudgeInvalidException(kind + " returned no parseable JSON");
         }
         cache.put(key, JudgeCache.Entry.of(version, prompts.sha256(version),
@@ -198,6 +203,18 @@ public class JudgeClient {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private static int length(String value) {
+        return value == null ? 0 : value.length();
+    }
+
+    /** Last {@code max} chars: truncation always breaks the end of the JSON, not the start. */
+    private static String tail(String value, int max) {
+        if (value == null) {
+            return "";
+        }
+        return value.length() <= max ? value : "…" + value.substring(value.length() - max);
     }
 
     private record Call(String content, long promptTokens, long completionTokens, long costMicros) {

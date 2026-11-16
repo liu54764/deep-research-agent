@@ -84,7 +84,7 @@ class ThresholdEvaluatorTest {
                 citationsJudged, (int) Math.round(car * citationsJudged), 0, 0, 0,
                 claimsWithCitations, car, car,
                 claimsWithCitations == 0 ? 0.0 : 1.0, 1.0,
-                keyPoints, coveredWeight, totalWeight, gcr,
+                keyPoints, coveredWeight, totalWeight, gcr, keyPoints > 0 ? 1 : 0,
                 exactJudged, 0, contradictionRate, 1.0,
                 citationsJudged, 0, 0, 0, 0,
                 0, java.util.Map.of(), questions);

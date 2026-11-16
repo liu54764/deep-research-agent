@@ -238,7 +238,9 @@ public class ArtifactWriter {
             md.append("| CSR (claims with ≥1 SUPPORT) | ").append(rate(metrics.csr())).append(" |\n");
             md.append("| GCR (weighted gold coverage) | ").append(rate(metrics.gcr()))
                     .append(" (").append(String.format(Locale.ROOT, "%.2f/%.2f",
-                            metrics.coveredWeight(), metrics.totalWeight())).append(") |\n");
+                            metrics.coveredWeight(), metrics.totalWeight()))
+                    .append(", ").append(metrics.gcrQuestions()).append("/")
+                    .append(metrics.succeeded()).append(" questions judged) |\n");
             md.append("| contradiction rate (exact) | ").append(rate(metrics.contradictionRate()))
                     .append(" (").append(metrics.contradicted()).append("/")
                     .append(metrics.exactClaimsJudged()).append(") |\n");
@@ -408,6 +410,14 @@ public class ArtifactWriter {
             md.append("- confidence calibration has only ").append(confidenceResult.samples())
                     .append(" claim samples (min ").append(properties.getConfidenceMinSamples())
                     .append("); ECE is reported but not gated.\n");
+        }
+        long succeededResults = report.results().stream().filter(QuestionResult::succeeded).count();
+        long gcrJudged = report.results().stream()
+                .filter(r -> r.judge().totalWeight() > 0).count();
+        if (report.judgeEnabled() && gcrJudged < succeededResults) {
+            md.append("- GCR covers only ").append(gcrJudged).append(" of ").append(succeededResults)
+                    .append(" succeeded questions: the others produced no parseable J2 verdict, so "
+                            + "the aggregate is computed over the judged subset only.\n");
         }
         long verifiedResults = report.results().stream().filter(QuestionResult::goldVerified).count();
         md.append("- questions with verified gold in this run: ").append(verifiedResults)
