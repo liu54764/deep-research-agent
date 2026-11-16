@@ -384,7 +384,17 @@ public class EvalProperties {
     public static class Thresholds {
         private double minCar = 0.85;
         private double minHfr = 0.90;
+        /** Explicit override (--min-gcr); when set it wins over the depth defaults. */
         private double minGcr = 0.80;
+        private boolean minGcrExplicit;
+        /**
+         * Gold coverage scales with how much budget a depth hands the planner: QUICK asks
+         * 3 sub-questions and fetches 5 sources, so 0.80 is not reachable on comparison or
+         * multi-part questions, while DEEP does reach it (measured 1.000 on the same gold).
+         */
+        private double minGcrQuick = 0.60;
+        private double minGcrStandard = 0.75;
+        private double minGcrDeep = 0.80;
         private double maxContradictionRate = 0.03;
         private double minSuccessRate = 0.98;
 
@@ -410,6 +420,44 @@ public class EvalProperties {
 
         public void setMinGcr(double minGcr) {
             this.minGcr = minGcr;
+            this.minGcrExplicit = true;
+        }
+
+        public double getMinGcrQuick() {
+            return minGcrQuick;
+        }
+
+        public void setMinGcrQuick(double minGcrQuick) {
+            this.minGcrQuick = minGcrQuick;
+        }
+
+        public double getMinGcrStandard() {
+            return minGcrStandard;
+        }
+
+        public void setMinGcrStandard(double minGcrStandard) {
+            this.minGcrStandard = minGcrStandard;
+        }
+
+        public double getMinGcrDeep() {
+            return minGcrDeep;
+        }
+
+        public void setMinGcrDeep(double minGcrDeep) {
+            this.minGcrDeep = minGcrDeep;
+        }
+
+        /** GCR floor for the depth actually used by this run. */
+        public double minGcrFor(String depth) {
+            if (minGcrExplicit) {
+                return minGcr;
+            }
+            String value = depth == null ? "" : depth.trim().toUpperCase(java.util.Locale.ROOT);
+            return switch (value) {
+                case "QUICK" -> minGcrQuick;
+                case "STANDARD" -> minGcrStandard;
+                default -> minGcrDeep;
+            };
         }
 
         public double getMaxContradictionRate() {

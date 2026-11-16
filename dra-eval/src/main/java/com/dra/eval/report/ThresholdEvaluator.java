@@ -37,9 +37,15 @@ public final class ThresholdEvaluator {
     }
 
     public static Result evaluate(EvalMetrics metrics, EvalProperties.Thresholds spec, boolean enabled) {
+        return evaluate(metrics, spec, enabled, null);
+    }
+
+    public static Result evaluate(EvalMetrics metrics, EvalProperties.Thresholds spec,
+                                  boolean enabled, String depth) {
         if (!enabled) {
             return Result.disabled();
         }
+        double minGcr = spec.minGcrFor(depth);
         List<Failure> failures = new ArrayList<>();
 
         if (metrics.questions() > 0) {
@@ -57,9 +63,9 @@ public final class ThresholdEvaluator {
             failures.add(new Failure("hfr", metrics.hfr(),
                     ">= " + fmt(spec.getMinHfr())));
         }
-        if (metrics.totalWeight() > 0 && metrics.gcr() < spec.getMinGcr()) {
+        if (metrics.totalWeight() > 0 && metrics.gcr() < minGcr) {
             failures.add(new Failure("gcr", metrics.gcr(),
-                    ">= " + fmt(spec.getMinGcr())));
+                    ">= " + fmt(minGcr) + (depth == null ? "" : " (" + depth + ")")));
         }
         if (metrics.exactClaimsJudged() > 0
                 && metrics.contradictionRate() > spec.getMaxContradictionRate()) {

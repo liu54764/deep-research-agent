@@ -171,8 +171,11 @@ public class EvalRunner implements ApplicationRunner, ExitCodeGenerator {
                 runId + ".jsonl"), true);
         EvalMetrics metrics = EvalMetrics.of(results, dataset.verified());
         ThresholdEvaluator.Result thresholds = ThresholdEvaluator.evaluate(
-                metrics, properties.getThresholds(), properties.isThresholdsEnabled());
-        BaselineOutcome baseline = baseline(dataset, metrics, depth, judgeEnabled, true, true);
+                metrics, properties.getThresholds(), properties.isThresholdsEnabled(), depth);
+        // A run that fails its own gate must not become the reference: freezing it would
+        // bless a failing measurement as the baseline for future comparisons.
+        BaselineOutcome baseline = baseline(dataset, metrics, depth, judgeEnabled,
+                thresholds.passed() && !outcome.infraFailure(), true);
 
         int code = decide(results, outcome.infraFailure(), mode, judgeEnabled,
                 labels.calibration(), thresholds, baseline.diff(), confidenceFailure);
@@ -274,7 +277,7 @@ public class EvalRunner implements ApplicationRunner, ExitCodeGenerator {
                 && confidence.ece() > properties.getConfidenceMaxEce();
         EvalMetrics metrics = EvalMetrics.of(results, dataset.verified());
         ThresholdEvaluator.Result thresholds = ThresholdEvaluator.evaluate(
-                metrics, properties.getThresholds(), properties.isThresholdsEnabled());
+                metrics, properties.getThresholds(), properties.isThresholdsEnabled(), depth);
         // A rescore does not re-run generation, so latency/cost are not comparable.
         BaselineOutcome baseline = baseline(dataset, metrics, depth, judgeEnabled, false, false);
 

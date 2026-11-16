@@ -16,6 +16,12 @@ public class LlmProperties {
     private double extractTemperature = 0.1;
     private double verifyTemperature = 0.0;
     private int maxTokens = 4096;
+    /**
+     * Claim synthesis emits up to 45 atomic claims in one JSON object; at 4096 output tokens
+     * the response is occasionally cut mid-array, which silently falls back to one claim per
+     * sub-question. The larger budget leaves room for the full list.
+     */
+    private int claimMaxTokens = 8192;
     private int connectTimeoutSeconds = 10;
     private int readTimeoutSeconds = 90;
     /** Micros (1e-6 CNY) per 1M tokens; configure to match your provider pricing. */
@@ -108,6 +114,14 @@ public class LlmProperties {
 
     public void setMaxTokens(int maxTokens) {
         this.maxTokens = maxTokens;
+    }
+
+    public int getClaimMaxTokens() {
+        return claimMaxTokens;
+    }
+
+    public void setClaimMaxTokens(int claimMaxTokens) {
+        this.claimMaxTokens = claimMaxTokens;
     }
 
     public int getConnectTimeoutSeconds() {

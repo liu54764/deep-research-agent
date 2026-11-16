@@ -32,7 +32,9 @@ dra:
     thresholds:
       min-car: ${DRA_EVAL_MIN_CAR:0.85}
       min-hfr: ${DRA_EVAL_MIN_HFR:0.90}
-      min-gcr: ${DRA_EVAL_MIN_GCR:0.80}
+      min-gcr-quick: ${DRA_EVAL_MIN_GCR_QUICK:0.55}
+      min-gcr-standard: ${DRA_EVAL_MIN_GCR_STANDARD:0.75}
+      min-gcr-deep: ${DRA_EVAL_MIN_GCR_DEEP:0.80}
       max-contradiction-rate: ${DRA_EVAL_MAX_CTR:0.03}
       min-success-rate: ${DRA_EVAL_MIN_SUCCESS:0.98}
     confidence-min-samples: ${DRA_EVAL_CONFIDENCE_MIN_SAMPLES:100}
@@ -53,7 +55,7 @@ dra:
       api-key: ${DRA_EVAL_JUDGE_API_KEY:}
       model: ${DRA_EVAL_JUDGE_MODEL:deepseek-reasoner}
       temperature: ${DRA_EVAL_JUDGE_TEMPERATURE:0.0}
-      max-tokens: ${DRA_EVAL_JUDGE_MAX_TOKENS:4096}
+      max-tokens: ${DRA_EVAL_JUDGE_MAX_TOKENS:8192}
       connect-timeout-seconds: ${DRA_EVAL_JUDGE_CONNECT_TIMEOUT_SECONDS:10}
       read-timeout-seconds: ${DRA_EVAL_JUDGE_READ_TIMEOUT_SECONDS:90}
       input-micros-per-million-tokens: ${DRA_EVAL_JUDGE_INPUT_MICROS_PER_M:4000000}

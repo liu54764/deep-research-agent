@@ -35,6 +35,32 @@ class ThresholdEvaluatorTest {
         assertTrue(result.messages().stream().anyMatch(m -> m.startsWith("successRate=0.500")));
     }
 
+    /**
+     * Gold coverage depends on how much budget the depth gives the planner, so the floor is
+     * per depth. 0.632 is the measured QUICK value; it must not be judged by the DEEP floor.
+     */
+    @Test
+    void gcrFloorDependsOnDepth() {
+        EvalProperties.Thresholds spec = new EvalProperties.Thresholds();
+        EvalMetrics quick = metrics(1, 1, 0.95, 10, 0.632, 0, 1.0, 0);
+
+        assertTrue(ThresholdEvaluator.evaluate(quick, spec, true, "QUICK").passed(),
+                "QUICK floor is 0.60");
+        assertFalse(ThresholdEvaluator.evaluate(quick, spec, true, "STANDARD").passed(),
+                "STANDARD floor is 0.75");
+        assertFalse(ThresholdEvaluator.evaluate(quick, spec, true, "DEEP").passed(),
+                "DEEP floor is 0.80");
+    }
+
+    @Test
+    void explicitMinGcrOverridesTheDepthFloor() {
+        EvalProperties.Thresholds spec = new EvalProperties.Thresholds();
+        spec.setMinGcr(0.90);
+        EvalMetrics quick = metrics(1, 1, 0.95, 10, 0.632, 0, 1.0, 0);
+
+        assertFalse(ThresholdEvaluator.evaluate(quick, spec, true, "QUICK").passed());
+    }
+
     @Test
     void contradictionRateIsAnUpperBound() {
         EvalMetrics metrics = metrics(1, 1, 10, 10, 1.0, 2, 1.0, 0.20);

@@ -45,6 +45,8 @@ public class ClaimActivitiesImpl implements ResearchActivities.Claim {
     // Atomic statements need more rows to express the same content; the old 30 cap was
     // hit exactly on every DEEP question, which silently truncated coverage.
     private static final int MAX_CLAIMS = 45;
+    // 60 evidence made the model truncate its JSON mid-output (observed: two questions fell
+    // back to 3-4 claims), so the fairness fix lives in selectEvenly, not in a bigger budget.
     private static final int MAX_EVIDENCE_IN_PROMPT = 40;
 
     private final LlmPort llm;
@@ -76,8 +78,7 @@ public class ClaimActivitiesImpl implements ResearchActivities.Claim {
         if (allEvidence.isEmpty()) {
             return List.of();
         }
-        List<EvidenceView> evidence = allEvidence.size() > MAX_EVIDENCE_IN_PROMPT
-                ? allEvidence.subList(0, MAX_EVIDENCE_IN_PROMPT) : allEvidence;
+        List<EvidenceView> evidence = selectEvenly(allEvidence, MAX_EVIDENCE_IN_PROMPT);
         Map<String, EvidenceView> byId = new LinkedHashMap<>();
         evidence.forEach(view -> byId.putIfAbsent(view.id(), view));
 
@@ -130,7 +131,7 @@ public class ClaimActivitiesImpl implements ResearchActivities.Claim {
 
     private LlmResponse call(String taskId, String system, String user) {
         return llm.complete(new LlmRequest(taskId, "claim.synthesize", properties.getClaimModel(),
-                system, user, properties.getExtractTemperature(), properties.getMaxTokens()));
+                system, user, properties.getExtractTemperature(), properties.getClaimMaxTokens()));
     }
 
     private List<ClaimDraft> parse(String raw, String taskId, Map<String, EvidenceView> allowedEvidence) {
@@ -184,8 +185,39 @@ public class ClaimActivitiesImpl implements ResearchActivities.Claim {
         return drafts;
     }
 
-    private List<ClaimDraft> fallbackClaims(SynthesizeInput input, List<EvidenceView> evidence) {
-        boolean chinese = input.subQuestions().stream()
+    /**
+     * Round-robin over sub-questions instead of a "first N" cut: evidence arrives grouped by
+     * sub-question, so truncating in insertion order drops every fact belonging to the later
+     * sub-questions and those never become claims (observed: 65 evidence → 27 claims and 0%
+     * gold coverage on the SSRF question).
+     */
+    static List<EvidenceView> selectEvenly(List<EvidenceView> evidence, int limit) {
+        if (evidence.size() <= limit) {
+            return evidence;
+        }
+        Map<String, List<EvidenceView>> bySubQuestion = new LinkedHashMap<>();
+        for (EvidenceView view : evidence) {
+            String key = view.subQuestionId() == null ? "" : view.subQuestionId();
+            bySubQuestion.computeIfAbsent(key, ignored -> new ArrayList<>()).add(view);
+        }
+        List<List<EvidenceView>> queues = new ArrayList<>(bySubQuestion.values());
+        List<EvidenceView> selected = new ArrayList<>(limit);
+        int maxDepth = queues.stream().mapToInt(List::size).max().orElse(0);
+        for (int depth = 0; depth < maxDepth && selected.size() < limit; depth++) {
+            for (List<EvidenceView> queue : queues) {
+                if (depth >= queue.size()) {
+                    continue;
+                }
+                selected.add(queue.get(depth));
+                if (selected.size() >= limit) {
+                    break;
+                }
+            }
+        }
+        return selected;
+    }
+
+    private List<ClaimDraft> fallbackClaims(SynthesizeInput input, List<EvidenceView> evidence) {        boolean chinese = input.subQuestions().stream()
                 .anyMatch(q -> containsCjk(q.question()));
         Map<String, List<EvidenceView>> bySubQuestion = evidence.stream()
                 .collect(Collectors.groupingBy(EvidenceView::subQuestionId, LinkedHashMap::new, Collectors.toList()));

@@ -116,8 +116,8 @@ public class ResearchWorkflowImpl implements ResearchWorkflow {
                     break;
                 }
 
-                List<SearchHit> hits = search(ctx, subQuestions);
-                List<SearchHit> picked = pick(hits, Math.min(ctx.maxSources(), 6));
+                Map<String, List<SearchHit>> hits = search(ctx, subQuestions);
+                List<SearchHit> picked = pick(hits, subQuestions, Math.min(ctx.maxSources(), 6));
                 if (picked.isEmpty()) {
                     addWarning("NO_SOURCES", "no search results for round " + round);
                     break;
@@ -225,10 +225,11 @@ public class ResearchWorkflowImpl implements ResearchWorkflow {
                 usedTokens, usedCostMicros, List.copyOf(warnings), stopReason, reportId);
     }
 
-    private List<SearchHit> search(TaskContext ctx, List<SubQuestion> subQuestions) {
+    private Map<String, List<SearchHit>> search(TaskContext ctx, List<SubQuestion> subQuestions) {
         emitPhase(Phase.SEARCH);
         awaitResumeIfPaused();
-        List<SearchHit> hits = new ArrayList<>();
+        // Hits stay grouped per sub-question so fetch slots can be shared fairly.
+        Map<String, List<SearchHit>> hits = new LinkedHashMap<>();
         done = 0;
         total = subQuestions.size();
         // MVP: sequential fan-out; M6 replaces this with batched Async.function calls.
@@ -236,7 +237,7 @@ public class ResearchWorkflowImpl implements ResearchWorkflow {
             SearchResult result = searchActivities.search(
                     new SearchInput(ctx.taskId(), round, subQuestion, ctx.topK()));
             charge(result.usage());
-            hits.addAll(result.hits());
+            hits.put(subQuestion.id(), new ArrayList<>(result.hits()));
             progress(Phase.SEARCH, ++done, total);
         }
         return hits;
@@ -405,14 +406,40 @@ public class ResearchWorkflowImpl implements ResearchWorkflow {
         }
     }
 
-    private static List<SearchHit> pick(List<SearchHit> hits, int limit) {
+    /**
+     * Shares fetch slots across sub-questions round-robin: every sub-question gets its best
+     * hit before any gets a second one. A plain "first N of all hits" cut lets early
+     * sub-questions consume the whole budget, so a question's later half ends up with no
+     * sources at all (observed: an SSE sub-question with 0 evidence, LangGraph side with 4).
+     */
+    static List<SearchHit> pick(Map<String, List<SearchHit>> hitsBySubQuestion,
+                                List<SubQuestion> subQuestions, int limit) {
+        int cap = Math.max(1, limit);
         Map<String, SearchHit> unique = new LinkedHashMap<>();
-        for (SearchHit hit : hits) {
-            if (hit != null && hit.url() != null) {
-                unique.putIfAbsent(hit.url(), hit);
+        List<List<SearchHit>> queues = new ArrayList<>();
+        for (SubQuestion subQuestion : subQuestions) {
+            List<SearchHit> hits = hitsBySubQuestion.get(subQuestion.id());
+            if (hits != null && !hits.isEmpty()) {
+                queues.add(hits);
             }
         }
-        return unique.values().stream().limit(Math.max(1, limit)).toList();
+        int maxDepth = queues.stream().mapToInt(List::size).max().orElse(0);
+        for (int depth = 0; depth < maxDepth && unique.size() < cap; depth++) {
+            for (List<SearchHit> queue : queues) {
+                if (depth >= queue.size()) {
+                    continue;
+                }
+                SearchHit hit = queue.get(depth);
+                if (hit == null || hit.url() == null) {
+                    continue;
+                }
+                unique.putIfAbsent(hit.url(), hit);
+                if (unique.size() >= cap) {
+                    break;
+                }
+            }
+        }
+        return new ArrayList<>(unique.values());
     }
 
     private static ActivityOptions options(String queue, int startToCloseSeconds) {
