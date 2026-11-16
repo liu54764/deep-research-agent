@@ -35,7 +35,7 @@ class DatasetLoaderTest {
 
         assertEquals(8, dataset.total());
         assertEquals(8, dataset.questions().size());
-        assertEquals(4, dataset.verified(), "four questions were fact-checked on 2026-11-15");
+        assertEquals(8, dataset.verified(), "all 8 questions were fact-checked by 2026-11-16");
         assertNotNull(dataset.sha256());
         assertEquals(64, dataset.sha256().length());
         assertEquals(1, dataset.datasetVersions().size());

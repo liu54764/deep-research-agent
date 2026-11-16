@@ -190,8 +190,53 @@ class JudgeScorerTest {
         assertEquals(0.0, result.claimPrecision(), 1e-9);
     }
 
-    private JudgeScorer scorer(LlmPort port) {
-        EvalProperties properties = new EvalProperties();
+    /**
+     * A reasoning judge that receives every claim at once spends its whole output budget
+     * on hidden reasoning and returns nothing, which silently wiped gold metrics. Claims
+     * are therefore judged in batches, and keypoint verdicts are OR-merged across them.
+     */
+    @Test
+    void largeClaimSetsAreJudgedInBatchesAndCoverageIsMerged() {
+        JudgeScorer scorer = scorer(request -> {
+            String system = request.systemPrompt();
+            if (system.contains("引用支撑")) {
+                return response("{\"citations\":[{\"ref\":\"[1]\",\"verdict\":\"SUPPORT\"}]}");
+            }
+            if (system.contains("覆盖度")) {
+                // Only later batches claim kp1 is covered; the merge must keep it true.
+                boolean firstBatch = request.userPrompt().contains("c1:");
+                return response("{\"coverage\":[{\"kpId\":\"kp1\",\"covered\":"
+                        + (firstBatch ? "false" : "true")
+                        + "},{\"kpId\":\"kp2\",\"covered\":false}]}");
+            }
+            throw new IllegalStateException("J3 must not run for keypoints questions");
+        });
+
+        JudgeResult result = scorer.score(keyPointsQuestion(), documentWithClaims(30));
+
+        assertEquals(3, result.j2Calls(), "30 claims split into batches of 12");
+        assertEquals(2, result.keyPointsJudged());
+        assertEquals(1.0, result.coveredWeight(), 1e-9);
+        assertEquals(1.6, result.totalWeight(), 1e-9);
+        assertEquals(30, result.citationsJudged());
+    }
+
+    private static ReportDocument documentWithClaims(int count) {
+        List<ReportDocument.Claim> claims = new java.util.ArrayList<>();
+        for (int i = 1; i <= count; i++) {
+            claims.add(new ReportDocument.Claim("c" + i, "结论 " + i, "SUPPORTED", 0.8,
+                    List.of(new ReportDocument.Citation("[1]",
+                            "https://a.example/" + i, "t", "引用 " + i))));
+        }
+        return new ReportDocument(
+                List.of(new ReportDocument.Section("s1", "章节", claims)),
+                List.of(),
+                List.of(),
+                new ReportDocument.Stats("COVERAGE_REACHED", 1000, 100, 10, 1, 1, 1, 1.0, List.of()),
+                Map.of("stopReason", "COVERAGE_REACHED"));
+    }
+
+    private JudgeScorer scorer(LlmPort port) {        EvalProperties properties = new EvalProperties();
         properties.setCacheDir(dir.toString());
         properties.getJudge().setModel("judge-test");
         JudgeClient client = new JudgeClient(properties, mapper,

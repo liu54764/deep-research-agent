@@ -185,7 +185,7 @@ public class ReportActivitiesImpl implements ResearchActivities.Report {
         meta.put("depth", nullToEmpty(bundle.depth()));
         meta.put("stopReason", nullToEmpty(bundle.stopReason()));
         meta.put("question", nullToEmpty(bundle.question()));
-        meta.put("promptVersions", "plan.v1,extract.v1,claim.v2,verify.v1,conflict.v1,report.v1");
+        meta.put("promptVersions", "plan.v2,extract.v1,claim.v2,verify.v1,conflict.v1,report.v1");
         meta.put("models", String.join(",", List.of(
                 properties.getPlanModel(), properties.getExtractModel(),
                 properties.getClaimModel(), properties.getVerifyModel())));

@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -30,6 +31,12 @@ public class JudgeScorer {
     private static final int MAX_USER_CHARS = 12_000;
     private static final int MAX_QUOTE_CHARS = 800;
     private static final int MAX_STATEMENT_CHARS = 600;
+    /**
+     * A single J2/J3 call carrying every claim makes a reasoning judge spend its whole
+     * output budget on hidden reasoning (observed: completionTokens == max, empty content),
+     * so gold metrics silently vanish. Batching keeps each call small.
+     */
+    private static final int CLAIMS_PER_BATCH = 12;
 
     private final JudgeClient client;
     private final JudgePrompts prompts;
@@ -142,38 +149,47 @@ public class JudgeScorer {
         double totalWeight = 0.0;
         List<EvalQuestion.KeyPoint> keyPoints = question.gold().keyPoints();
         if (!keyPoints.isEmpty() && !claims.isEmpty()) {
-            j2Calls++;
-            try {
-                String user = prompts.render(prompts.user(JudgePrompts.J2), Map.of(
-                        "question", truncate(question.question(), MAX_STATEMENT_CHARS),
-                        "keyPoints", formatKeyPoints(keyPoints),
-                        "claims", formatClaims(claims)));
-                JudgeClient.Judged judged = client.askJson(question.id(), "j2", JudgePrompts.J2,
-                        prompts.system(JudgePrompts.J2), truncate(user, MAX_USER_CHARS));
-                promptTokens += judged.promptTokens();
-                completionTokens += judged.completionTokens();
-                costMicros += judged.costMicros();
-                if (judged.cacheHit()) {
-                    cacheHits++;
-                }
-                Map<String, Boolean> coverage = parseCoverage(judged.result());
-                for (EvalQuestion.KeyPoint keyPoint : keyPoints) {
-                    Boolean covered = coverage.get(keyPoint.id());
-                    if (covered == null) {
-                        invalidOutputs++;
-                        continue;
+            // Batched: a keypoint counts as covered if any batch says so, and only counts
+            // as judged once at least one batch actually returned a verdict for it.
+            Map<String, Boolean> coverage = new LinkedHashMap<>();
+            Set<String> answered = new LinkedHashSet<>();
+            for (List<FlatClaim> batch : batches(claims)) {
+                j2Calls++;
+                try {
+                    String user = prompts.render(prompts.user(JudgePrompts.J2), Map.of(
+                            "question", truncate(question.question(), MAX_STATEMENT_CHARS),
+                            "keyPoints", formatKeyPoints(keyPoints),
+                            "claims", formatClaims(batch)));
+                    JudgeClient.Judged judged = client.askJson(question.id(), "j2", JudgePrompts.J2,
+                            prompts.system(JudgePrompts.J2), truncate(user, MAX_USER_CHARS));
+                    promptTokens += judged.promptTokens();
+                    completionTokens += judged.completionTokens();
+                    costMicros += judged.costMicros();
+                    if (judged.cacheHit()) {
+                        cacheHits++;
                     }
-                    keyPointsJudged++;
-                    totalWeight += keyPoint.weight();
-                    if (covered) {
-                        coveredWeight += keyPoint.weight();
-                    }
-                    j2Candidates.add(new LabelItem("J2", question.id(), keyPoint.id(),
-                            j2Label(question.question(), keyPoint, claims),
-                            covered ? "COVERED" : "NOT_COVERED", null));
+                    Map<String, Boolean> batchCoverage = parseCoverage(judged.result());
+                    answered.addAll(batchCoverage.keySet());
+                    batchCoverage.forEach((id, covered) ->
+                            coverage.merge(id, covered, (left, right) -> left || right));
+                } catch (JudgeClient.JudgeInvalidException e) {
+                    invalidOutputs++;
                 }
-            } catch (JudgeClient.JudgeInvalidException e) {
-                invalidOutputs++;
+            }
+            for (EvalQuestion.KeyPoint keyPoint : keyPoints) {
+                if (!answered.contains(keyPoint.id())) {
+                    invalidOutputs++;
+                    continue;
+                }
+                boolean covered = Boolean.TRUE.equals(coverage.get(keyPoint.id()));
+                keyPointsJudged++;
+                totalWeight += keyPoint.weight();
+                if (covered) {
+                    coveredWeight += keyPoint.weight();
+                }
+                j2Candidates.add(new LabelItem("J2", question.id(), keyPoint.id(),
+                        j2Label(question.question(), keyPoint, claims),
+                        covered ? "COVERED" : "NOT_COVERED", null));
             }
         }
 
@@ -182,38 +198,41 @@ public class JudgeScorer {
         int contradicted = 0;
         String goldAnswer = question.gold().goldAnswer();
         if (question.exact() && goldAnswer != null && !goldAnswer.isBlank() && !claims.isEmpty()) {
-            j3Calls++;
-            try {
-                String user = prompts.render(prompts.user(JudgePrompts.J3), Map.of(
-                        "question", truncate(question.question(), MAX_STATEMENT_CHARS),
-                        "goldAnswer", truncate(goldAnswer, MAX_STATEMENT_CHARS * 2),
-                        "claims", formatClaims(claims)));
-                JudgeClient.Judged judged = client.askJson(question.id(), "j3", JudgePrompts.J3,
-                        prompts.system(JudgePrompts.J3), truncate(user, MAX_USER_CHARS));
-                promptTokens += judged.promptTokens();
-                completionTokens += judged.completionTokens();
-                costMicros += judged.costMicros();
-                if (judged.cacheHit()) {
-                    cacheHits++;
-                }
-                Map<String, String> verdicts = parseGoldVerdicts(judged.result());
-                for (FlatClaim claim : claims) {
-                    String verdict = verdicts.get(claim.id());
-                    if (verdict == null) {
-                        invalidOutputs++;
-                        continue;
+            Map<String, String> verdicts = new LinkedHashMap<>();
+            for (List<FlatClaim> batch : batches(claims)) {
+                j3Calls++;
+                try {
+                    String user = prompts.render(prompts.user(JudgePrompts.J3), Map.of(
+                            "question", truncate(question.question(), MAX_STATEMENT_CHARS),
+                            "goldAnswer", truncate(goldAnswer, MAX_STATEMENT_CHARS * 2),
+                            "claims", formatClaims(batch)));
+                    JudgeClient.Judged judged = client.askJson(question.id(), "j3", JudgePrompts.J3,
+                            prompts.system(JudgePrompts.J3), truncate(user, MAX_USER_CHARS));
+                    promptTokens += judged.promptTokens();
+                    completionTokens += judged.completionTokens();
+                    costMicros += judged.costMicros();
+                    if (judged.cacheHit()) {
+                        cacheHits++;
                     }
-                    exactClaimsJudged++;
-                    if ("SUPPORTED".equals(verdict)) {
-                        goldSupported++;
-                        j3Correct.put(claim.id(), true);
-                    } else if ("CONTRADICTED".equals(verdict)) {
-                        contradicted++;
-                        j3Correct.put(claim.id(), false);
-                    }
+                    verdicts.putAll(parseGoldVerdicts(judged.result()));
+                } catch (JudgeClient.JudgeInvalidException e) {
+                    invalidOutputs++;
                 }
-            } catch (JudgeClient.JudgeInvalidException e) {
-                invalidOutputs++;
+            }
+            for (FlatClaim claim : claims) {
+                String verdict = verdicts.get(claim.id());
+                if (verdict == null) {
+                    invalidOutputs++;
+                    continue;
+                }
+                exactClaimsJudged++;
+                if ("SUPPORTED".equals(verdict)) {
+                    goldSupported++;
+                    j3Correct.put(claim.id(), true);
+                } else if ("CONTRADICTED".equals(verdict)) {
+                    contradicted++;
+                    j3Correct.put(claim.id(), false);
+                }
             }
         }
 
@@ -343,6 +362,15 @@ public class JudgeScorer {
                     .append(truncate(claim.statement(), MAX_STATEMENT_CHARS)).append('\n');
         }
         return out.toString();
+    }
+
+    /** Split claims so each judge call stays small enough for a reasoning model. */
+    static List<List<FlatClaim>> batches(List<FlatClaim> claims) {
+        List<List<FlatClaim>> batches = new ArrayList<>();
+        for (int start = 0; start < claims.size(); start += CLAIMS_PER_BATCH) {
+            batches.add(claims.subList(start, Math.min(claims.size(), start + CLAIMS_PER_BATCH)));
+        }
+        return batches;
     }
 
     private static String j1Label(String question, String statement,

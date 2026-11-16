@@ -36,7 +36,7 @@ import java.util.Set;
 public class PlanActivitiesImpl implements ResearchActivities.Plan {
 
     private static final Logger log = LoggerFactory.getLogger(PlanActivitiesImpl.class);
-    private static final String PROMPT_VERSION = "plan.v1";
+    private static final String PROMPT_VERSION = "plan.v2";
     private static final int PLAN_VERSION = 1;
 
     private final LlmPort llm;
@@ -58,8 +58,8 @@ public class PlanActivitiesImpl implements ResearchActivities.Plan {
 
     @Override
     public PlanResult create(TaskContext context) {
-        String system = promptLoader.load("prompts/plan.v1.system.md");
-        String user = promptLoader.render(promptLoader.load("prompts/plan.v1.user.md"),
+        String system = promptLoader.load("prompts/plan.v2.system.md");
+        String user = promptLoader.render(promptLoader.load("prompts/plan.v2.user.md"),
                 Map.of(
                         "question", context.question(),
                         "depth", context.depth().name(),
