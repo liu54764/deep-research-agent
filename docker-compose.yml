@@ -1,0 +1,126 @@
+name: dra
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_ROOT_HOST: "%"
+      MYSQL_DATABASE: dra
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  temporal:
+    image: temporalio/auto-setup:latest
+    environment:
+      DB: mysql8
+      DB_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PWD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_SEEDS: mysql
+    ports:
+      - "7233:7233"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:8233
+    ports:
+      - "8233:8080"
+    depends_on:
+      - temporal
+
+  # Application services. Build jars first: mvn -DskipTests package
+  # Start with: docker compose --profile app up -d --build
+  api:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        JAR_FILE: dra-api/target/dra-api-0.1.0-SNAPSHOT.jar
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      TEMPORAL_TARGET: temporal:7233
+      DRA_API_KEY: ${DRA_API_KEY:-dev-key}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mysql
+      - redis
+      - temporal
+
+  worker-io:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        JAR_FILE: dra-worker/target/dra-worker-0.1.0-SNAPSHOT.jar
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      TEMPORAL_TARGET: temporal:7233
+      DRA_WORKER_ROLES: orchestration,io
+    depends_on:
+      - mysql
+      - redis
+      - temporal
+
+  worker-llm:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        JAR_FILE: dra-worker/target/dra-worker-0.1.0-SNAPSHOT.jar
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      TEMPORAL_TARGET: temporal:7233
+      DRA_WORKER_ROLES: llm
+    depends_on:
+      - mysql
+      - redis
+      - temporal
+
+volumes:
+  mysql-data:
+  redis-data:

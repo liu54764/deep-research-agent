@@ -1,0 +1,64 @@
+server:
+  port: ${API_PORT:8080}
+
+spring:
+  application:
+    name: dra-api
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/dra?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    default-property-inclusion: non_null
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+dra:
+  api:
+    api-key: ${DRA_API_KEY:dev-key}
+  temporal:
+    target: ${TEMPORAL_TARGET:127.0.0.1:7233}
+    namespace: ${TEMPORAL_NAMESPACE:default}
+  search:
+    provider: ${DRA_SEARCH_PROVIDER:mock}
+    tavily-api-key: ${TAVILY_API_KEY:}
+    tavily-base-url: ${TAVILY_BASE_URL:https://api.tavily.com}
+    tavily-search-depth: ${TAVILY_SEARCH_DEPTH:basic}
+    timeout-seconds: ${TAVILY_TIMEOUT_SECONDS:30}
+  fetch:
+    mode: ${DRA_FETCH_MODE:stub}
+    timeout-seconds: ${DRA_FETCH_TIMEOUT_SECONDS:20}
+    max-bytes: ${DRA_FETCH_MAX_BYTES:3145728}
+    max-redirects: ${DRA_FETCH_MAX_REDIRECTS:3}
+    user-agent: ${DRA_FETCH_USER_AGENT:DeepResearchAgent/0.1}
+    allow-private-for-tests: false
+  http:
+    proxy: ${DRA_HTTP_PROXY:}
+    connect-timeout-seconds: ${DRA_HTTP_CONNECT_TIMEOUT_SECONDS:10}
+  llm:
+    enabled: ${DRA_LLM_ENABLED:false}
+    base-url: ${DRA_LLM_BASE_URL:https://api.deepseek.com}
+    api-key: ${DRA_LLM_API_KEY:}
+
+logging:
+  level:
+    com.dra: INFO
+    io.temporal: WARN

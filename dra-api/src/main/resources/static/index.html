@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Deep Research Agent · 测试台</title>
+    <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="topbar">
+    <div class="brand">
+        <span class="logo">DR</span>
+        <div>
+            <strong>Deep Research Agent</strong>
+            <span class="tag">测试台</span>
+        </div>
+    </div>
+    <div class="keybox">
+        <label for="apiKey">API Key</label>
+        <input id="apiKey" type="password" autocomplete="off" spellcheck="false"
+               placeholder="dev-key" title="默认 dev-key；由 DRA_API_KEY 配置">
+        <button id="saveKey" class="ghost">保存</button>
+        <span id="keyState" class="muted small">默认 dev-key</span>
+    </div>
+</header>
+
+<main class="layout">
+    <aside class="sidebar">
+        <section class="panel">
+            <h2>新建研究</h2>
+            <textarea id="question" rows="4" placeholder="输入一个开放式研究问题，例如：Kafka 的 exactly-once 语义在什么范围内成立？"></textarea>
+            <div class="row">
+                <select id="depth">
+                    <option value="QUICK">QUICK · 3 子问题</option>
+                    <option value="STANDARD">STANDARD · 5 子问题</option>
+                    <option value="DEEP">DEEP · 8 子问题</option>
+                </select>
+                <button id="submit" class="primary">开始研究</button>
+            </div>
+            <p class="hint" id="submitHint">真实链路：QUICK 约 2 分钟、约 ¥0.2~0.3</p>
+        </section>
+
+        <section class="panel grow">
+            <div class="panel-head">
+                <h2>最近任务</h2>
+                <button id="refresh" class="ghost small">刷新</button>
+            </div>
+            <ul id="tasks" class="task-list">
+                <li class="empty-line">暂无任务</li>
+            </ul>
+        </section>
+    </aside>
+
+    <section class="content">
+        <div id="empty" class="empty">
+            <div class="empty-icon">⌁</div>
+            <p>提交一个问题，或从左侧选择一个任务。</p>
+            <p class="muted small">进度走 SSE 实时推送；完成后展示结构化报告、Markdown 与事件流。</p>
+        </div>
+
+        <div id="detail" hidden>
+            <section class="panel task-head">
+                <div class="task-meta">
+                    <span id="statusBadge" class="badge">—</span>
+                    <span id="phaseText" class="muted"></span>
+                    <span id="taskIdText" class="mono muted small"></span>
+                </div>
+                <div class="progress" title="任务进度"><div id="progressBar"></div></div>
+                <div class="head-stats">
+                    <div><span class="label">进度</span><span id="percent">—</span></div>
+                    <div><span class="label">tokens</span><span id="tokens">—</span></div>
+                    <div><span class="label">成本</span><span id="cost">—</span></div>
+                    <div><span class="label">stop</span><span id="stopReason">—</span></div>
+                </div>
+                <div class="actions">
+                    <button id="pause" class="ghost">暂停</button>
+                    <button id="resume" class="ghost">恢复</button>
+                    <button id="cancel" class="ghost danger">取消</button>
+                    <button id="openRaw" class="ghost">报告 JSON</button>
+                </div>
+                <div id="warnings" class="warnings"></div>
+            </section>
+
+            <nav class="tabs">
+                <button data-tab="report" class="tab active">报告</button>
+                <button data-tab="markdown" class="tab">Markdown</button>
+                <button data-tab="events" class="tab">事件流</button>
+                <button data-tab="raw" class="tab">原始 JSON</button>
+            </nav>
+
+            <div id="tab-report" class="tab-panel"></div>
+            <div id="tab-markdown" class="tab-panel" hidden>
+                <section class="panel">
+                    <div class="panel-head">
+                        <h2>Markdown</h2>
+                        <button id="downloadMd" class="ghost small">下载 .md</button>
+                    </div>
+                    <pre id="markdown" class="pre"></pre>
+                </section>
+            </div>
+            <div id="tab-events" class="tab-panel" hidden>
+                <section class="panel">
+                    <div class="panel-head">
+                        <h2>事件流</h2>
+                        <span id="sseState" class="muted small">未连接</span>
+                    </div>
+                    <pre id="events" class="pre events"></pre>
+                </section>
+            </div>
+            <div id="tab-raw" class="tab-panel" hidden>
+                <section class="panel">
+                    <div class="panel-head"><h2>报告 JSON</h2></div>
+                    <pre id="raw" class="pre"></pre>
+                </section>
+            </div>
+        </div>
+    </section>
+</main>
+
+<div id="toast" class="toast" hidden></div>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+spring:
+  application:
+    name: dra-eval
+  main:
+    web-application-type: none
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/dra?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root}
+  flyway:
+    # eval must never migrate the business schema; api/worker own migrations.
+    enabled: false
+
+dra:
+  eval:
+    mode: ${DRA_EVAL_MODE:self-test}
+    api-base-url: ${DRA_API_URL:http://localhost:8080}
+    api-key: ${DRA_API_KEY:dev-key}
+    dataset: ${DRA_EVAL_DATASET:eval/dataset/questions.jsonl}
+    split: ${DRA_EVAL_SPLIT:regression}
+    depth: ${DRA_EVAL_DEPTH:QUICK}
+    limit: ${DRA_EVAL_LIMIT:0}
+    parallel: ${DRA_EVAL_PARALLEL:2}
+    poll-interval-ms: ${DRA_EVAL_POLL_INTERVAL_MS:2000}
+    task-timeout-minutes: ${DRA_EVAL_TASK_TIMEOUT_MINUTES:20}
+    max-cost-cny: ${DRA_EVAL_MAX_COST_CNY:3}
+    out: ${DRA_EVAL_OUT:eval/runs}
+    baseline: ${DRA_EVAL_BASELINE:}
+    freeze-baseline: ${DRA_EVAL_FREEZE_BASELINE:false}
+    rescore-from: ${DRA_EVAL_RESCORE_FROM:}
+    thresholds-enabled: ${DRA_EVAL_THRESHOLDS_ENABLED:true}
+    thresholds:
+      min-car: ${DRA_EVAL_MIN_CAR:0.85}
+      min-hfr: ${DRA_EVAL_MIN_HFR:0.90}
+      min-gcr: ${DRA_EVAL_MIN_GCR:0.80}
+      max-contradiction-rate: ${DRA_EVAL_MAX_CTR:0.03}
+      min-success-rate: ${DRA_EVAL_MIN_SUCCESS:0.98}
+    confidence-min-samples: ${DRA_EVAL_CONFIDENCE_MIN_SAMPLES:100}
+    confidence-max-ece: ${DRA_EVAL_CONFIDENCE_MAX_ECE:0.15}
+    labels: ${DRA_EVAL_LABELS:}
+    labels-dir: ${DRA_EVAL_LABELS_DIR:eval/labels}
+    cache-dir: ${DRA_EVAL_CACHE_DIR:eval/cache/judge}
+    kappa-threshold: ${DRA_EVAL_KAPPA_THRESHOLD:0.7}
+    kappa-sample-j1: ${DRA_EVAL_KAPPA_SAMPLE_J1:12}
+    kappa-sample-j2: ${DRA_EVAL_KAPPA_SAMPLE_J2:4}
+    url-check:
+      enabled: ${DRA_EVAL_URL_CHECK:true}
+      sample-limit: ${DRA_EVAL_URL_SAMPLE_LIMIT:20}
+      timeout-seconds: ${DRA_EVAL_URL_TIMEOUT_SECONDS:8}
+    judge:
+      enabled: ${DRA_EVAL_JUDGE_ENABLED:false}
+      base-url: ${DRA_EVAL_JUDGE_BASE_URL:https://api.deepseek.com}
+      api-key: ${DRA_EVAL_JUDGE_API_KEY:}
+      model: ${DRA_EVAL_JUDGE_MODEL:deepseek-reasoner}
+      temperature: ${DRA_EVAL_JUDGE_TEMPERATURE:0.0}
+      max-tokens: ${DRA_EVAL_JUDGE_MAX_TOKENS:4096}
+      connect-timeout-seconds: ${DRA_EVAL_JUDGE_CONNECT_TIMEOUT_SECONDS:10}
+      read-timeout-seconds: ${DRA_EVAL_JUDGE_READ_TIMEOUT_SECONDS:90}
+      input-micros-per-million-tokens: ${DRA_EVAL_JUDGE_INPUT_MICROS_PER_M:4000000}
+      output-micros-per-million-tokens: ${DRA_EVAL_JUDGE_OUTPUT_MICROS_PER_M:16000000}
+
+logging:
+  level:
+    com.dra: INFO
+    io.temporal: WARN
+    org.springframework: WARN

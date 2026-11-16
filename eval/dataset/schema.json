@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://dra.local/schema/eval-question-v1.json",
+  "title": "DRA eval question v1",
+  "description": "One line of eval/dataset/questions.jsonl. Gold answers are drafts until verified=true.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "datasetVersion",
+    "split",
+    "category",
+    "question",
+    "language",
+    "depth",
+    "gold",
+    "contested"
+  ],
+  "properties": {
+    "id": { "type": "string", "pattern": "^q-[a-z0-9-]+$" },
+    "datasetVersion": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "split": { "enum": ["regression", "dev", "test"] },
+    "category": { "type": "string", "minLength": 2 },
+    "question": { "type": "string", "minLength": 8 },
+    "language": { "enum": ["zh", "en"] },
+    "depth": { "enum": ["QUICK", "STANDARD", "DEEP"] },
+    "contested": { "type": "boolean" },
+    "notes": { "type": "string" },
+    "gold": { "$ref": "#/definitions/gold" }
+  },
+  "definitions": {
+    "gold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "verified", "keyPoints"],
+      "properties": {
+        "type": { "enum": ["exact", "keypoints"] },
+        "verified": { "type": "boolean" },
+        "checkedAt": { "type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "goldAnswer": { "type": "string", "minLength": 8 },
+        "keyPoints": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": { "$ref": "#/definitions/keyPoint" }
+        },
+        "conflicts": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/conflict" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "exact" } } },
+          "then": { "required": ["goldAnswer"] }
+        }
+      ]
+    },
+    "keyPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "weight", "statement"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^kp[0-9]+$" },
+        "weight": { "type": "number", "minimum": 0.1, "maximum": 1.0 },
+        "statement": { "type": "string", "minLength": 4 },
+        "aliases": { "type": "array", "items": { "type": "string" } },
+        "referenceUrls": { "type": "array", "items": { "type": "string", "format": "uri" } }
+      }
+    },
+    "conflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sideA", "sideB"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^cf[0-9]+$" },
+        "sideA": { "type": "string", "minLength": 4 },
+        "sideB": { "type": "string", "minLength": 4 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "contested": { "const": true } } },
+      "then": { "properties": { "gold": { "required": ["conflicts"] } } }
+    }
+  ]
+}

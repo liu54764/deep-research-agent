@@ -1,0 +1,30 @@
+# Build
+target/
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Local env
+.env
+.env.local
+.env.*.local
+*.local
+
+# Logs
+logs/
+*.log
+
+# Eval artifacts (runs are machine-local; baselines/labels are committed)
+eval/runs/
+# Judge cache / label templates are machine-local
+eval/cache/
+
+# Load-test artifacts (machine-local)
+perf/runs/
