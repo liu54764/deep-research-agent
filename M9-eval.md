@@ -424,9 +424,9 @@ eval/baselines/<name>.json       # 冻结基线（稳定指标子集 + 指纹）
 1. **样本收集**：judge 对每条渲染 claim 给出外部正确性——`exact` 题优先用 J3（`SUPPORTED=true` / `CONTRADICTED=false`），其余用 J1（至少一条 SUPPORT 且无 REFUTE/UNRELATED 记为正确）。逐条写入 `calibration-samples.jsonl`，可离线复算。
 2. **ECE / Brier**：10 桶，`ECE = Σ (n_i/N)·|acc_i − conf_i|`；同时输出高置信桶（≥0.8）经验正确率与分桶表，写 `confidence-calibration.json` 并在 summary 展示。样本 < `confidence-min-samples`（默认 100）时只报告、不门禁；达到样本量且 `ECE > confidence-max-ece`（默认 0.15）→ 退出码 1。
 3. **冲突惩罚**：`confidence ← max(0, confidence − λ × min(冲突数, 1))`，λ 默认 0.2，由 `dra.verify.confidence.conflict-penalty` / `max-penalized-conflicts` 控制；在 `ConflictActivitiesImpl` 落库后回写 `claim.confidence`，报告在冲突之后生成，天然读到最终值。
-4. **权重**：`judge-weight / rule-weight / diversity-weight` 已配置化（默认保持 M6 行为 0.5/0.3/0.2）。**网格拟合暂缓**：`verification` 表只存 verdict、不存 judge 分数/规则比例/多样性，缺少可拟合的自变量；与其在小样本上拍脑袋改权重，不如等分量落库（后续 migration）后再做，避免把噪声固化成默认值。
+4. **权重**：`judge-weight / rule-weight / diversity-weight` 已配置化（默认保持 M6 行为 0.5/0.3/0.2）。**网格拟合暂缓**：`verification` 表只存 verdict、不存 judge 分数/规则比例/多样性，缺少可拟合的自变量；与其在小样本上拍脑袋改权重，不如等分量落库（后续 migration）后再做，避免把噪声固化成默认值。→ 分量已落库，见 §7.5。
 
-### 7.3 产品代码改动（已完成 2/3）
+### 7.3 产品代码改动（已完成）
 
 1. ✅ `VerifyActivitiesImpl`：权重从常量改为 `ConfidenceProperties`（`dra.verify.confidence.*`）。
 2. ✅ **冲突回写**：`ConflictActivitiesImpl` 保存冲突后对命中 claim 重算并写库（新增 `ClaimRepository.updateConfidence`）。
@@ -437,7 +437,23 @@ eval/baselines/<name>.json       # 冻结基线（稳定指标子集 + 指纹）
 - ECE / Brier / 分桶 / 高置信正确率**已可计算并门禁**（样本不足时不宣称已校准）。
 - 冲突惩罚**已生效**：单测覆盖 0.9→0.7、0.7→0.5，未参与冲突的 claim 不变。
 - 本机 stub + mock judge 实测：3 道 exact 题共 6 条样本，`ECE=0.100`、`Brier=0.010`、高置信桶准确率 1.000，因 n<100 标 `insufficient`、不门禁。
-- **未做**：权重网格拟合（缺分量落库）、真实链路下的 ECE 复核（需要一次 ≥100 条 claim 的真实运行）。
+- **未做**：真实链路下的 ECE 复核（需要一次 ≥100 条 claim 的真实运行）；权重建议已可产出（§7.5），但尚未在独立样本上确认。
+
+### 7.5 分量落库与权重建议（2026-11-17）
+
+解决 §7.2 第 4 条的自变量缺失：
+
+| 位置 | 改动 |
+|---|---|
+| `V3__verification_confidence_components.sql` | `verification` 新增 `judge_confidence`、`rule_ratio`、`diversity_score`、`confidence`（均为 NULL 兼容旧行；`confidence` 是**截断与冲突惩罚之前**的加权分） |
+| `VerifyActivitiesImpl` | 写入四个分量；`claim.confidence` 仍是最终值（含 verdict 截断 + 冲突回写） |
+| `DetailReader` | 取每个 claim 最新一轮 verification 的分量（`ORDER BY round DESC, created_at DESC LIMIT 1`），旧行为 NULL |
+| `ClaimSample` / `JudgeScorer` | 样本带上三分量；旧 run 的 `confidence-calibration.json` 结构不变 |
+| `ConfidenceCalibration` | 新增按分量的 `mean / mean(correct) / mean(incorrect) / ECE / Brier`；样本 ≥30 时输出权重建议（judge 0~1 步长 0.05，rule:diversity 固定 3:2），est 最优 ECE、Brier 平手时取 Brier 更低 |
+
+产物变化：`confidence-calibration.json` 增加 `components` 与 `recommendation` 字段；summary 增加分量表与一行权重建议。**建议是在同一批样本上网格搜索得到的 in-sample 结果**，必须先在新一轮真实 eval 上复核（尤其确认 `recommendation.ece` 在独立样本上仍优于当前权重），再决定是否修改 `dra.verify.confidence.*`。
+
+已验证：V3 在 MySQL 8.4 应用成功；upsert SQL（含 `ON DUPLICATE KEY UPDATE`）与 DetailReader 的最新轮 join 均在库上实测通过；`dra-worker` 40 + `dra-eval` 79 个单测全绿。真实数据的 ECE 复核仍等 Tavily 额度恢复。
 
 ---
 
@@ -486,7 +502,7 @@ GCR 分别是 0.632 与 0.563（判官 temperature 已是 0，差异来自生成
 | **M9.2** | CLI 骨架 + TaskRunner + 采集 + 不变量 + 规则轨 + summary（先关 judge） | `self-test` 全绿；real 跑 3 题出不变量/规则指标 |
 | **M9.3** | Judge 三任务 + 人工抽检 κ | 3 题 run 的 judge 结果可复算；κ ≥ 0.7（40 条抽样） |
 | **M9.4** | 指标聚合 + 95% CI + 基线 + 退出码 | 8 题全量产出完整 `metrics.json` + `summary.md`，基线 diff 可跑 |
-| **M9.5** | 置信度校准 + 冲突惩罚落地 | ECE 达标；冲突 claim 置信度下调可观测 |
+| **M9.5** | 置信度校准 + 冲突惩罚落地 | ECE 量化并门禁（实测 0.155 欠自信；三分量已落库，见 §7.5，待独立样本复核）；冲突 claim 置信度下调可观测 |
 | **M9.6** | 基线固化 + README §3.4 + 简历数字 | `baseline-v1.json` 入库；README 附可复现命令与真实数字 |
 
 粗略工作量（不含等模型/网络）：M9.1 0.5d、M9.2 1.5d、M9.3 1d、M9.4 0.5d、M9.5 1d、M9.6 0.5d。

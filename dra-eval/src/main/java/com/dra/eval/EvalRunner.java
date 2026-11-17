@@ -344,7 +344,7 @@ public class EvalRunner implements ApplicationRunner, ExitCodeGenerator {
                     report.document(), report.markdown(), snapshot, status.warnings());
             RuleScorer.RuleResult rule = ruleScorer.score(report.document(), snapshot, urlCheck);
             JudgeResult judge = judgeEnabled
-                    ? judgeScorer.score(question, report.document())
+                    ? judgeScorer.score(question, report.document(), snapshot.byId())
                     : JudgeResult.empty();
             if (judgeEnabled) {
                 spentMicros.addAndGet(Math.max(0, judge.costMicros()));
@@ -655,7 +655,7 @@ public class EvalRunner implements ApplicationRunner, ExitCodeGenerator {
                     report.document(), report.markdown(), snapshot, status.warnings());
             RuleScorer.RuleResult rule = ruleScorer.score(report.document(), snapshot, urlCheck);
             JudgeResult judge = judgeEnabled
-                    ? judgeScorer.score(question, report.document())
+                    ? judgeScorer.score(question, report.document(), snapshot.byId())
                     : JudgeResult.empty();
             if (judgeEnabled) {
                 spentMicros.addAndGet(Math.max(0, judge.costMicros()));

@@ -1,6 +1,7 @@
 package com.dra.eval.judge;
 
 import com.dra.contracts.dto.ReportDocument;
+import com.dra.eval.collect.DbSnapshot;
 import com.dra.eval.dataset.EvalQuestion;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Component;
@@ -47,6 +48,15 @@ public class JudgeScorer {
     }
 
     public JudgeResult score(EvalQuestion question, ReportDocument document) {
+        return score(question, document, Map.of());
+    }
+
+    /**
+     * @param claimsById persisted claims keyed by id; supplies the confidence components that
+     *                   the rendered document does not carry. Empty means "components unknown".
+     */
+    public JudgeResult score(EvalQuestion question, ReportDocument document,
+                             Map<String, DbSnapshot.DbClaim> claimsById) {
         List<FlatClaim> claims = flatten(document);
         List<LabelItem> j1Candidates = new ArrayList<>();
         List<LabelItem> j2Candidates = new ArrayList<>();
@@ -249,8 +259,12 @@ public class JudgeScorer {
                 source = "J1";
             }
             if (correct != null) {
+                DbSnapshot.DbClaim persisted = claimsById.get(claim.id());
                 samples.add(new ClaimSample(question.id(), claim.id(), claim.confidence(),
-                        correct, source));
+                        correct, source,
+                        persisted == null ? null : persisted.judgeConfidence(),
+                        persisted == null ? null : persisted.ruleRatio(),
+                        persisted == null ? null : persisted.diversityScore()));
             }
         }
 

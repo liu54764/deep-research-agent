@@ -276,6 +276,29 @@ public class ArtifactWriter {
                         .append(" |\n");
             }
             md.append('\n');
+
+            if (!confidence.components().isEmpty()) {
+                md.append("### Score components\n\n");
+                md.append("| component | n | mean | mean (correct) | mean (incorrect) | ECE |\n")
+                        .append("|---|---|---|---|---|---|\n");
+                for (ConfidenceCalibration.ComponentStats component : confidence.components()) {
+                    md.append("| ").append(component.name())
+                            .append(" | ").append(component.samples())
+                            .append(" | ").append(rate(component.mean()))
+                            .append(" | ").append(rate(component.meanWhenCorrect()))
+                            .append(" | ").append(rate(component.meanWhenIncorrect()))
+                            .append(" | ").append(rate(component.ece()))
+                            .append(" |\n");
+                }
+                md.append('\n');
+            }
+            if (confidence.recommendation() != null) {
+                md.append("- weight suggestion (in-sample, rule:diversity fixed 3:2): ")
+                        .append(confidence.recommendation().describe())
+                        .append('\n');
+                md.append("  - confirm on a fresh run before changing "
+                        + "`dra.verify.confidence.*`\n\n");
+            }
         }
 
         ThresholdEvaluator.Result thresholds = report.thresholds();

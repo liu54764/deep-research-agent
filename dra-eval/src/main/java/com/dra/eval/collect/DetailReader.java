@@ -46,10 +46,17 @@ public class DetailReader {
 
     private List<DbSnapshot.DbClaim> claims(String taskId) {
         return jdbc.sql("""
-                SELECT id, section_key, statement, importance, status, confidence
-                  FROM claim
-                 WHERE task_id = :taskId
-                 ORDER BY created_at
+                SELECT c.id, c.section_key, c.statement, c.importance, c.status, c.confidence,
+                       v.judge_confidence, v.rule_ratio, v.diversity_score
+                  FROM claim c
+                  LEFT JOIN verification v ON v.id = (
+                      SELECT v2.id
+                        FROM verification v2
+                       WHERE v2.claim_id = c.id
+                       ORDER BY v2.`round` DESC, v2.created_at DESC
+                       LIMIT 1)
+                 WHERE c.task_id = :taskId
+                 ORDER BY c.created_at
                 """)
                 .param("taskId", taskId)
                 .query((rs, rowNum) -> new DbSnapshot.DbClaim(
@@ -58,7 +65,10 @@ public class DetailReader {
                         rs.getString("statement"),
                         rs.getInt("importance"),
                         rs.getString("status"),
-                        decimal(rs.getBigDecimal("confidence"))))
+                        decimal(rs.getBigDecimal("confidence")),
+                        decimalOrNull(rs.getBigDecimal("judge_confidence")),
+                        decimalOrNull(rs.getBigDecimal("rule_ratio")),
+                        decimalOrNull(rs.getBigDecimal("diversity_score"))))
                 .list();
     }
 
@@ -122,5 +132,9 @@ public class DetailReader {
 
     private static double decimal(BigDecimal value) {
         return value == null ? 0.0 : value.doubleValue();
+    }
+
+    private static Double decimalOrNull(BigDecimal value) {
+        return value == null ? null : value.doubleValue();
     }
 }

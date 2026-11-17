@@ -23,16 +23,22 @@ public class JdbcVerificationRepository implements VerificationRepository {
         jdbc.sql("""
                 INSERT INTO verification
                     (id, claim_id, `round`, rule_verdict, llm_verdict, final_verdict, rationale,
-                     checked_source_ids, verifier_profile, prompt_version, created_at)
+                     checked_source_ids, verifier_profile, prompt_version,
+                     judge_confidence, rule_ratio, diversity_score, confidence, created_at)
                 VALUES
                     (:id, :claimId, :round, :ruleVerdict, :llmVerdict, :finalVerdict, :rationale,
-                     :checkedSourceIds, :verifierProfile, :promptVersion, NOW(3))
+                     :checkedSourceIds, :verifierProfile, :promptVersion,
+                     :judgeConfidence, :ruleRatio, :diversityScore, :confidence, NOW(3))
                 ON DUPLICATE KEY UPDATE
                     rule_verdict = VALUES(rule_verdict),
                     llm_verdict = VALUES(llm_verdict),
                     final_verdict = VALUES(final_verdict),
                     rationale = VALUES(rationale),
                     checked_source_ids = VALUES(checked_source_ids),
+                    judge_confidence = VALUES(judge_confidence),
+                    rule_ratio = VALUES(rule_ratio),
+                    diversity_score = VALUES(diversity_score),
+                    confidence = VALUES(confidence),
                     created_at = NOW(3)
                 """)
                 .param("id", verification.id())
@@ -45,6 +51,10 @@ public class JdbcVerificationRepository implements VerificationRepository {
                 .param("checkedSourceIds", write(verification.checkedSourceIds()))
                 .param("verifierProfile", verification.verifierProfile())
                 .param("promptVersion", verification.promptVersion())
+                .param("judgeConfidence", verification.judgeConfidence())
+                .param("ruleRatio", verification.ruleRatio())
+                .param("diversityScore", verification.diversityScore())
+                .param("confidence", verification.confidence())
                 .update();
     }
 

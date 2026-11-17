@@ -2,7 +2,9 @@ package com.dra.eval.collect;
 
 import com.dra.domain.model.TaskRow;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * One task's persisted facts, read directly from MySQL. The evaluator never trusts the
@@ -31,13 +33,31 @@ public record DbSnapshot(
         return sources.stream().filter(s -> "OK".equals(s.fetchStatus())).count();
     }
 
+    /** Claim id → claim, for joining report-rendered claims back to persisted components. */
+    public Map<String, DbClaim> byId() {
+        Map<String, DbClaim> byId = new LinkedHashMap<>();
+        for (DbClaim claim : claims) {
+            byId.put(claim.id(), claim);
+        }
+        return byId;
+    }
+
     public record DbClaim(
             String id,
             String sectionKey,
             String statement,
             int importance,
             String status,
-            double confidence) {
+            double confidence,
+            Double judgeConfidence,
+            Double ruleRatio,
+            Double diversityScore) {
+
+        /** Claims without persisted components (runs written before V3, or test fixtures). */
+        public DbClaim(String id, String sectionKey, String statement, int importance,
+                       String status, double confidence) {
+            this(id, sectionKey, statement, importance, status, confidence, null, null, null);
+        }
     }
 
     public record DbCitation(

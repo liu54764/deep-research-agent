@@ -12,7 +12,11 @@ public record VerificationRow(
         String rationale,
         List<String> checkedSourceIds,
         String verifierProfile,
-        String promptVersion) {
+        String promptVersion,
+        double judgeConfidence,
+        double ruleRatio,
+        double diversityScore,
+        double confidence) {
 
     public VerificationRow {
         checkedSourceIds = checkedSourceIds == null ? List.of() : List.copyOf(checkedSourceIds);

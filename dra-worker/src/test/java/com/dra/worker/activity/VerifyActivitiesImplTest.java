@@ -48,6 +48,13 @@ class VerifyActivitiesImplTest {
         assertEquals("SUPPORTED", fixture.claims.saved.get(0).status());
         assertEquals(1, fixture.verifications.saved.size());
         assertTrue(result.confidence() > 0.5);
+
+        // Components are persisted so offline calibration can explain the score.
+        VerificationRow saved = fixture.verifications.saved.get(0);
+        assertEquals(0.9, saved.judgeConfidence(), 1e-9);
+        assertEquals(1.0, saved.ruleRatio(), 1e-9);
+        assertEquals(1.0 / 3.0, saved.diversityScore(), 1e-9);
+        assertEquals(0.5 * 0.9 + 0.3 * 1.0 + 0.2 * (1.0 / 3.0), saved.confidence(), 1e-9);
     }
 
     @Test

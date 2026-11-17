@@ -173,9 +173,13 @@ public class VerifyActivitiesImpl implements ResearchActivities.Verify {
         }
 
         double diversity = Math.min(1.0, evidence.size() / 3.0);
-        double confidence = confidenceProperties.getJudgeWeight() * llmConfidence
-                + confidenceProperties.getRuleWeight() * ruleRatio
-                + confidenceProperties.getDiversityWeight() * diversity;
+        // Confidence before the verdict caps and before the conflict penalty. Persisted with the
+        // components so calibration can explain the score instead of only observing it.
+        double prePenaltyConfidence = Math.max(0.0, Math.min(1.0,
+                confidenceProperties.getJudgeWeight() * llmConfidence
+                        + confidenceProperties.getRuleWeight() * ruleRatio
+                        + confidenceProperties.getDiversityWeight() * diversity));
+        double confidence = prePenaltyConfidence;
         if ("REFUTED".equals(finalVerdict)) {
             confidence = Math.min(confidence, 0.3);
         } else if ("UNSUPPORTED".equals(finalVerdict)) {
@@ -196,7 +200,11 @@ public class VerifyActivitiesImpl implements ResearchActivities.Verify {
                 truncate(rationale, 1000),
                 List.copyOf(checkedSourceIds),
                 profile,
-                PROMPT_VERSION));
+                PROMPT_VERSION,
+                llmConfidence,
+                ruleRatio,
+                diversity,
+                prePenaltyConfidence));
 
         return new Verification(claim.id(), ruleVerdict, llmVerdict, finalVerdict, confidence,
                 truncate(rationale, 1000), List.copyOf(checkedSourceIds), usage);
