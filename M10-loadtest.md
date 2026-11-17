@@ -75,7 +75,7 @@ java -jar dra-bench/target/dra-bench-0.1.0-SNAPSHOT.jar \
 | 编号 | 场景 | 目的 | 状态 |
 |---|---|---|---|
 | S1 | QUICK × N，C=4 | 基线数字 | 骨架已跑通 |
-| S2 | 并发梯度 C=1/2/4/8 | 找拐点与排队增长 | 待真实 LLM |
+| S2 | 并发梯度 C=1/2/4/8 | 找拐点与排队增长 | 调度层曲线已出（§6.1）；真实链路 C=1/2 已跑，C=4/8 等 Tavily 额度 |
 | S3 | 同并发扩 worker-llm/io 数量 | 吞吐曲线与瓶颈定位 | 待 M10 部署 |
 | S4 | 压测中 kill worker | 成功率、恢复时间（Temporal 价值） | 复用 `scripts/crash-test.sh` 思路 |
 | S5 | SSE 连接数（500/API 实例） | 进度通道容量 | 待实现 |
@@ -112,6 +112,27 @@ perf/runs/<runId>/
 | 参数校验 | `--min-success-rate=1.01` → exit 2 + usage |
 
 > 以上是 **stub 模式**（mock LLM / stub 搜索抓取）的骨架验证，数字只证明管道正确，不代表真实容量。
+
+---
+
+## 6.1 S2 调度层并发梯度（2026-11-17，mock 搜索 + stub LLM）
+
+真实 Tavily 额度本月已用满（`/usage`：1001/1000，所有搜索返回 HTTP 432），无法补真实链路 C=4/C=8。为把调度层容量单独量出来，使用 `DRA_SEARCH_PROVIDER=mock`、`DRA_LLM_ENABLED=false`、`DRA_FETCH_MODE=stub` 跑完整梯度。**这组数字只反映本机 Temporal/MySQL/Redis/API 的调度与并发能力，不代表真实链路容量。**
+
+| C | wall P50 | wall P95 | queue P50 | server P50 | submit P95 | 吞吐 (tasks/min) | 成功 |
+|---|---|---|---|---|---|---|---|
+| 1 | 16.3s | 17.4s | 0.1s | 15.9s | 0.12s | 3.57 | 8/8 |
+| 2 | 16.2s | 16.3s | 0.1s | 15.2s | 0.17s | 7.49 | 8/8 |
+| 4 | 15.2s | 18.1s | 0.1s | 14.9s | 0.69s | 14.39 | 8/8 |
+| 8 | 16.6s | 16.6s | 0.2s | 15.6s | 0.27s | 28.89 | 8/8 |
+
+结论：
+
+- 吞吐随 C 线性增长（3.57 → 7.49 → 14.39 → 28.89，每档约 ×2），到 C=8 没有拐点。
+- queue wait 全程 ≤0.2s，server run 稳定在 15~16s：瓶颈不在调度层；stub 任务耗时由固定 sleep 决定，本机 worker 并发（io=50 / llm=20）远高于 C=8。
+- 与真实链路对照：真实 C=1/2 的 server run 恒为 138s、queue 0.1s，瓶颈是外部依赖串行等待而非本机容量；真实 C=4/C=8 需在 Tavily 额度恢复后补（见 §7）。
+
+产物：`perf/runs/20261117T020556Z`（C=1）、`020811Z`（C=2）、`020450Z`（C=4）、`020530Z`（C=8）。
 
 ---
 
