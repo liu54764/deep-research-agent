@@ -77,7 +77,7 @@ java -jar dra-bench/target/dra-bench-0.1.0-SNAPSHOT.jar \
 | S1 | QUICK × N，C=4 | 基线数字 | 骨架已跑通 |
 | S2 | 并发梯度 C=1/2/4/8 | 找拐点与排队增长 | 调度层曲线已出（§6.1）；真实链路 C=1/2 已跑，C=4/8 等 Tavily 额度 |
 | S3 | 同并发扩 worker-llm/io 数量 | 吞吐曲线与瓶颈定位 | 待 M10 部署 |
-| S4 | 压测中 kill worker | 成功率、恢复时间（Temporal 价值） | 复用 `scripts/crash-test.sh` 思路 |
+| S4 | 压测中 kill worker | 成功率、恢复时间（Temporal 价值） | 已完成（mock，§6.2）；真实链路待复测 |
 | S5 | SSE 连接数（500/API 实例） | 进度通道容量 | 待实现 |
 
 ---
@@ -136,10 +136,37 @@ perf/runs/<runId>/
 
 ---
 
+## 6.2 S4 故障演练（2026-11-17，mock 搜索 + stub LLM）
+
+脚本 `scripts/fault-drill.sh`：起 API + worker-io（orchestration,io）+ worker-llm 三个进程，`dra-bench` 以 C=4 提交 8 个 QUICK 任务；提交后约 4s `kill -9` worker-io，20s 后重启。
+
+| 指标 | 无故障（§6.1 C=4） | 演练 | 变化 |
+|---|---|---|---|
+| 成功率 | 8/8 | 8/8 | 0 |
+| wall P50 | 15.2s | 17.3s | +2.1s |
+| wall P95 | 18.1s | 47.0s | +28.9s |
+| server P95 | ~16s | 44.5s | +28.5s |
+| 吞吐 | 14.39/min | 7.47/min | −48% |
+| 总时长 | 33.4s | 64.3s | +30.9s |
+
+分任务看得很清楚：第一波 4 个在飞任务 wall/server ≈ 47s/44.5s；第二波 4 个（kill 后提交）正常 ≈ 16.3s。**8/8 成功、0 失败、0 重复副作用**——演练后 8 份 report / 16 条 claim，与无故障基线完全一致。
+
+恢复时间分解：
+
+- kill 发生在提交后约 4s，worker-io 停机 20s；
+- 在飞 io activity 的 `startToCloseTimeout` 是 30s，worker 死后不会立刻重派，要等超时（约提交后 31s）才重试；此时 worker-io 已恢复约 11s；
+- 因此这一轮的延迟几乎全部来自"无心跳 activity 的超时窗口"，而不是 Temporal 恢复本身。
+
+结论：Temporal 在 worker 进程崩溃后自动重派 activity、补齐 workflow 状态，全部任务最终成功；代价是**一个 activity 超时窗口**。可优化项：给 search/fetch 这类长 activity 加 heartbeat，把故障检测从 30s 降到秒级。
+
+Caveat：单机 Temporal、mock 依赖、单次演练；真实链路（外部依赖 + 真实 LLM）的恢复时间还需额度恢复后复测。
+
+---
+
 ## 7. 下一步
 
 1. **真实链路基线**：QUICK × 10，C=4，记录 wall/queue/server 分位与成本（约 ¥1.5~3）。
 2. **并发梯度 + 扩 worker**：C=1/2/4/8 对齐 `docker compose --scale worker-llm=N`，出"扩 worker 后 QPS 曲线"。
-3. **故障演练**：压测中 kill worker-io，统计成功率与恢复时间，补 S4。
+3. ✅ **故障演练（S4，mock）已完成**；真实链路的恢复时间待额度恢复后复测；可选优化是 activity heartbeat。
 4. **SSE 场景**：新增 `--sse-clients` 模式，测 500 连接/实例下的内存与事件延迟。
 5. **固定镜像版本**：M10 部署时把 Temporal/UI 从 `latest` 固定到具体版本。
