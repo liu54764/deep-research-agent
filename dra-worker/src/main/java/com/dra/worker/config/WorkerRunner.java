@@ -2,6 +2,7 @@ package com.dra.worker.config;
 
 import com.dra.contracts.activity.ResearchActivities;
 import com.dra.contracts.workflow.ResearchWorkflow;
+import com.dra.worker.activity.ActivityFailureWrapper;
 import com.dra.worker.workflow.ResearchWorkflowImpl;
 import io.temporal.client.WorkflowClient;
 import io.temporal.worker.Worker;
@@ -85,14 +86,24 @@ public class WorkerRunner implements ApplicationRunner, DisposableBean {
             Worker io = factory.newWorker(IO_QUEUE, WorkerOptions.newBuilder()
                     .setMaxConcurrentActivityExecutionSize(properties.getIoConcurrency())
                     .build());
-            io.registerActivitiesImplementations(taskActivities, eventActivities, searchActivities, fetchActivities);
+            io.registerActivitiesImplementations(
+                    ActivityFailureWrapper.wrap(ResearchActivities.Task.class, taskActivities),
+                    ActivityFailureWrapper.wrap(ResearchActivities.Events.class, eventActivities),
+                    ActivityFailureWrapper.wrap(ResearchActivities.Search.class, searchActivities),
+                    ActivityFailureWrapper.wrap(ResearchActivities.Fetch.class, fetchActivities));
         }
         if (roles.contains("llm")) {
             Worker llm = factory.newWorker(LLM_QUEUE, WorkerOptions.newBuilder()
                     .setMaxConcurrentActivityExecutionSize(properties.getLlmConcurrency())
                     .build());
-            llm.registerActivitiesImplementations(planActivities, extractActivities, coverageActivities,
-                    claimActivities, verifyActivities, conflictActivities, reportActivities);
+            llm.registerActivitiesImplementations(
+                    ActivityFailureWrapper.wrap(ResearchActivities.Plan.class, planActivities),
+                    ActivityFailureWrapper.wrap(ResearchActivities.Extract.class, extractActivities),
+                    ActivityFailureWrapper.wrap(ResearchActivities.Coverage.class, coverageActivities),
+                    ActivityFailureWrapper.wrap(ResearchActivities.Claim.class, claimActivities),
+                    ActivityFailureWrapper.wrap(ResearchActivities.Verify.class, verifyActivities),
+                    ActivityFailureWrapper.wrap(ResearchActivities.Conflict.class, conflictActivities),
+                    ActivityFailureWrapper.wrap(ResearchActivities.Report.class, reportActivities));
         }
 
         factory.start();

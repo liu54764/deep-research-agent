@@ -1,5 +1,6 @@
 package com.dra.worker.workflow;
 
+import com.dra.common.error.ErrorCode;
 import com.dra.contracts.activity.ResearchActivities;
 import com.dra.contracts.dto.ClaimDraft;
 import com.dra.contracts.dto.ConflictInput;
@@ -32,6 +33,7 @@ import com.dra.contracts.model.StopReason;
 import com.dra.contracts.model.TaskStatus;
 import com.dra.contracts.workflow.ResearchWorkflow;
 import io.temporal.activity.ActivityOptions;
+import io.temporal.failure.ApplicationFailure;
 import io.temporal.failure.CanceledFailure;
 import io.temporal.workflow.QueryMethod;
 import io.temporal.workflow.SignalMethod;
@@ -180,7 +182,14 @@ public class ResearchWorkflowImpl implements ResearchWorkflow {
                 cleanupCanceled(ctx.taskId());
                 throw canceled;
             }
-            cleanupFailed(ctx.taskId(), "WORKFLOW_ERROR", e.getMessage());
+            ApplicationFailure application = applicationCause(e);
+            if (application != null && isErrorCode(application.getType())) {
+                // Non-retryable business failures carry their code as the ApplicationFailure type
+                // (see ActivityFailureWrapper); surface it instead of a generic WORKFLOW_ERROR.
+                cleanupFailed(ctx.taskId(), application.getType(), application.getOriginalMessage());
+            } else {
+                cleanupFailed(ctx.taskId(), "WORKFLOW_ERROR", e.getMessage());
+            }
             if (e instanceof RuntimeException runtime) {
                 throw runtime;
             }
@@ -198,6 +207,34 @@ public class ResearchWorkflowImpl implements ResearchWorkflow {
             current = current.getCause();
         }
         return null;
+    }
+
+    /** Activity failures wrap the real ApplicationFailure; walk the cause chain. */
+    private static ApplicationFailure applicationCause(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof ApplicationFailure application) {
+                return application;
+            }
+            current = current.getCause();
+        }
+        return null;
+    }
+
+    /**
+     * Generic exceptions reach the workflow as ApplicationFailure whose type is the Java class
+     * name; only a type that names one of our stable error codes is a business failure.
+     */
+    private static boolean isErrorCode(String type) {
+        if (type == null || type.isBlank()) {
+            return false;
+        }
+        try {
+            ErrorCode.valueOf(type);
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     @Override

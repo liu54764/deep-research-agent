@@ -1,5 +1,7 @@
 package com.dra.worker.workflow;
 
+import com.dra.common.error.DraException;
+import com.dra.common.error.ErrorCode;
 import com.dra.contracts.activity.ResearchActivities;
 import com.dra.contracts.dto.ClaimDraft;
 import com.dra.contracts.dto.ConflictInput;
@@ -30,6 +32,7 @@ import com.dra.contracts.dto.Verification;
 import com.dra.contracts.dto.VerifyInput;
 import com.dra.contracts.model.Depth;
 import com.dra.contracts.workflow.ResearchWorkflow;
+import com.dra.worker.activity.ActivityFailureWrapper;
 import io.temporal.client.WorkflowOptions;
 import io.temporal.testing.TestWorkflowEnvironment;
 import io.temporal.worker.Worker;
@@ -50,6 +53,7 @@ class ResearchWorkflowTest {
 
     private final TaskStub taskStub = new TaskStub();
     private final ClaimStub claimStub = new ClaimStub();
+    private final SearchStub searchStub = new SearchStub();
 
     @BeforeEach
     void setUp() {
@@ -60,12 +64,20 @@ class ResearchWorkflowTest {
 
         Worker io = environment.newWorker("drs-io");
         io.registerActivitiesImplementations(
-                taskStub, new EventStub(), new SearchStub(), new FetchStub());
+                ActivityFailureWrapper.wrap(ResearchActivities.Task.class, taskStub),
+                ActivityFailureWrapper.wrap(ResearchActivities.Events.class, new EventStub()),
+                ActivityFailureWrapper.wrap(ResearchActivities.Search.class, searchStub),
+                ActivityFailureWrapper.wrap(ResearchActivities.Fetch.class, new FetchStub()));
 
         Worker llm = environment.newWorker("drs-llm");
         llm.registerActivitiesImplementations(
-                new PlanStub(), new ExtractStub(), new CoverageStub(),
-                claimStub, new VerifyStub(), new ConflictStub(), new ReportStub());
+                ActivityFailureWrapper.wrap(ResearchActivities.Plan.class, new PlanStub()),
+                ActivityFailureWrapper.wrap(ResearchActivities.Extract.class, new ExtractStub()),
+                ActivityFailureWrapper.wrap(ResearchActivities.Coverage.class, new CoverageStub()),
+                ActivityFailureWrapper.wrap(ResearchActivities.Claim.class, claimStub),
+                ActivityFailureWrapper.wrap(ResearchActivities.Verify.class, new VerifyStub()),
+                ActivityFailureWrapper.wrap(ResearchActivities.Conflict.class, new ConflictStub()),
+                ActivityFailureWrapper.wrap(ResearchActivities.Report.class, new ReportStub()));
 
         environment.start();
     }
@@ -118,11 +130,32 @@ class ResearchWorkflowTest {
         assertTrue(taskStub.failedCostMicros > 0, "failed task lost its cost counter");
     }
 
+    @Test
+    void nonRetryableSearchFailureIsNotRetriedAndKeepsErrorCode() {
+        searchStub.failNonRetryable = true;
+        ResearchWorkflow workflow = environment.getWorkflowClient().newWorkflowStub(
+                ResearchWorkflow.class,
+                WorkflowOptions.newBuilder()
+                        .setTaskQueue(ResearchWorkflow.TASK_QUEUE)
+                        .setWorkflowId("research/test-quota")
+                        .build());
+
+        assertThrows(RuntimeException.class, () -> workflow.run(new ResearchRequest(
+                "task-3", "Temporal vs LangGraph", Depth.QUICK, 5, 500_000, 0, "auto",
+                List.of(), List.of())));
+
+        // RetryOptions allows 3 attempts; a permanent failure must be attempted once.
+        assertEquals(1, searchStub.calls, "non-retryable search failure was retried");
+        assertEquals("SEARCH_UNAVAILABLE", taskStub.failedCode,
+                "business error code was flattened to WORKFLOW_ERROR");
+    }
+
     // --- deterministic activity stubs (no Spring, no DB) ---
 
     static final class TaskStub implements ResearchActivities.Task {
         long failedTokens;
         long failedCostMicros;
+        String failedCode;
 
         @Override
         public TaskContext init(ResearchRequest request) {
@@ -140,6 +173,7 @@ class ResearchWorkflowTest {
         @Override
         public void markFailed(String taskId, String errorCode, String errorMessage,
                                long usedTokens, long usedCostMicros) {
+            failedCode = errorCode;
             failedTokens = usedTokens;
             failedCostMicros = usedCostMicros;
         }
@@ -171,8 +205,16 @@ class ResearchWorkflowTest {
     }
 
     static final class SearchStub implements ResearchActivities.Search {
+        int calls;
+        boolean failNonRetryable;
+
         @Override
         public SearchResult search(SearchInput input) {
+            calls++;
+            if (failNonRetryable) {
+                throw new DraException(ErrorCode.SEARCH_UNAVAILABLE,
+                        "Tavily HTTP 432: exceeds plan limit", false);
+            }
             return new SearchResult(List.of(
                     new SearchHit("https://example.org/" + input.subQuestion().id() + "/1",
                             "Result 1", "snippet", 1, "mock", "2026-01-01"),
