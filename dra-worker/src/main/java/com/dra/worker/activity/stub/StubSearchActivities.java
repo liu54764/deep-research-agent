@@ -6,6 +6,7 @@ import com.dra.contracts.dto.SearchInput;
 import com.dra.contracts.dto.SearchResult;
 import com.dra.contracts.dto.Usage;
 import com.dra.domain.port.SearchPort;
+import com.dra.worker.activity.HeartbeatGuard;
 import com.dra.worker.config.WorkerProperties;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -27,11 +28,13 @@ public class StubSearchActivities implements ResearchActivities.Search {
 
     @Override
     public SearchResult search(SearchInput input) {
-        StubSupport.sleep(properties.getSearchSleepMs());
-        List<SearchHit> hits = new ArrayList<>();
-        for (String query : input.subQuestion().queries()) {
-            hits.addAll(searchPort.search(query, input.topK()).hits());
-        }
-        return new SearchResult(hits, "mock", Usage.ZERO, properties.getSearchSleepMs());
+        return HeartbeatGuard.await(() -> {
+            StubSupport.sleep(properties.getSearchSleepMs());
+            List<SearchHit> hits = new ArrayList<>();
+            for (String query : input.subQuestion().queries()) {
+                hits.addAll(searchPort.search(query, input.topK()).hits());
+            }
+            return new SearchResult(hits, "mock", Usage.ZERO, properties.getSearchSleepMs());
+        });
     }
 }

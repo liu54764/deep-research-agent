@@ -46,7 +46,8 @@ public class SearchActivitiesImpl implements ResearchActivities.Search {
         for (String query : queries) {
             long queryStartedAt = System.nanoTime();
             try {
-                SearchResult result = searchPort.search(query, input.topK());
+                SearchResult result = HeartbeatGuard.await(
+                        () -> searchPort.search(query, input.topK()));
                 recordQuery(input, query, "SUCCESS", result.hits().size(),
                         (System.nanoTime() - queryStartedAt) / 1_000_000L, result.usage().costMicros());
                 hits.addAll(result.hits());

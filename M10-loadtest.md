@@ -157,9 +157,32 @@ perf/runs/<runId>/
 - 在飞 io activity 的 `startToCloseTimeout` 是 30s，worker 死后不会立刻重派，要等超时（约提交后 31s）才重试；此时 worker-io 已恢复约 11s；
 - 因此这一轮的延迟几乎全部来自"无心跳 activity 的超时窗口"，而不是 Temporal 恢复本身。
 
-结论：Temporal 在 worker 进程崩溃后自动重派 activity、补齐 workflow 状态，全部任务最终成功；代价是**一个 activity 超时窗口**。可优化项：给 search/fetch 这类长 activity 加 heartbeat，把故障检测从 30s 降到秒级。
+结论：Temporal 在 worker 进程崩溃后自动重派 activity、补齐 workflow 状态，全部任务最终成功；代价是**一个 activity 超时窗口**。可优化项：给 search/fetch 这类长 activity 加 heartbeat，把故障检测从 30s 降到秒级（已在 §6.3 落地并复测）。
 
 Caveat：单机 Temporal、mock 依赖、单次演练；真实链路（外部依赖 + 真实 LLM）的恢复时间还需额度恢复后复测。
+
+---
+
+## 6.3 S4 复测：activity heartbeat（2026-11-17）
+
+改动：
+
+- 新增 `HeartbeatGuard`：把阻塞的 io 调用放到 helper 线程，activity 线程每 2s heartbeat 一次；不在 activity 上下文（单测直接调用）时自动降级为普通等待。
+- workflow 给 search/fetch 设置 `setHeartbeatTimeout(5s)`；Search/Fetch 的真实与 stub 实现都用 guard 包裹。
+- `scripts/fault-drill.sh` 增加 `SKIP_KILL=1` 控制组；用 `DRA_STUB_SEARCH_MS` 拉长 activity，确保 kill 落在执行中。
+
+验证方式：2 任务 / C=2，`DRA_STUB_SEARCH_MS=15000`，kill 落在 search 执行中；同配置不 kill 作为对照（wall 64.9s）。
+
+Temporal history 的直接证据（kill 后 5s 判定超时、worker 重启后立即重派）：
+
+```
+ACTIVITY_TASK_STARTED attempt=2
+lastFailure: "activity Heartbeat timeout" (TIMEOUT_TYPE_HEARTBEAT)
+```
+
+结果：2/2 成功，wall 82.5s（对照 64.9s，+17.6s）。这 17.6s 由两部分构成：被杀的 search 已执行约 10s、重试从头再跑（+10s）；worker 停机 + Spring 启动约 10s。**不再包含 30s 的 startToClose 等待**。
+
+对比 §6.2（无 heartbeat）：恢复检测固定为 5s 心跳窗口；停机时间越长，收益越接近原来的 25s。真实链路的恢复时间（外部依赖 + 真实 LLM）仍需额度恢复后复测。
 
 ---
 
@@ -167,6 +190,6 @@ Caveat：单机 Temporal、mock 依赖、单次演练；真实链路（外部依
 
 1. **真实链路基线**：QUICK × 10，C=4，记录 wall/queue/server 分位与成本（约 ¥1.5~3）。
 2. **并发梯度 + 扩 worker**：C=1/2/4/8 对齐 `docker compose --scale worker-llm=N`，出"扩 worker 后 QPS 曲线"。
-3. ✅ **故障演练（S4，mock）已完成**；真实链路的恢复时间待额度恢复后复测；可选优化是 activity heartbeat。
+3. ✅ **故障演练（S4，mock）已完成**，并已用 activity heartbeat 把恢复检测压到 5s（§6.2/§6.3）；真实链路恢复时间待额度恢复后复测。
 4. **SSE 场景**：新增 `--sse-clients` 模式，测 500 连接/实例下的内存与事件延迟。
 5. **固定镜像版本**：M10 部署时把 Temporal/UI 从 `latest` 固定到具体版本。

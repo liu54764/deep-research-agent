@@ -62,9 +62,9 @@ public class ResearchWorkflowImpl implements ResearchWorkflow {
     private final ResearchActivities.Events eventActivities =
             Workflow.newActivityStub(ResearchActivities.Events.class, options(IO_QUEUE, 10));
     private final ResearchActivities.Search searchActivities =
-            Workflow.newActivityStub(ResearchActivities.Search.class, options(IO_QUEUE, 30));
+            Workflow.newActivityStub(ResearchActivities.Search.class, options(IO_QUEUE, 30, 5));
     private final ResearchActivities.Fetch fetchActivities =
-            Workflow.newActivityStub(ResearchActivities.Fetch.class, options(IO_QUEUE, 30));
+            Workflow.newActivityStub(ResearchActivities.Fetch.class, options(IO_QUEUE, 30, 5));
     private final ResearchActivities.Plan planActivities =
             Workflow.newActivityStub(ResearchActivities.Plan.class, options(LLM_QUEUE, 120));
     private final ResearchActivities.Extract extractActivities =
@@ -480,14 +480,24 @@ public class ResearchWorkflowImpl implements ResearchWorkflow {
     }
 
     private static ActivityOptions options(String queue, int startToCloseSeconds) {
-        return ActivityOptions.newBuilder()
+        return options(queue, startToCloseSeconds, 0);
+    }
+
+    private static ActivityOptions options(String queue, int startToCloseSeconds,
+                                           int heartbeatSeconds) {
+        ActivityOptions.Builder builder = ActivityOptions.newBuilder()
                 .setTaskQueue(queue)
                 .setStartToCloseTimeout(Duration.ofSeconds(startToCloseSeconds))
                 .setRetryOptions(io.temporal.common.RetryOptions.newBuilder()
                         .setInitialInterval(Duration.ofMillis(300))
                         .setBackoffCoefficient(2.0)
                         .setMaximumAttempts(3)
-                        .build())
-                .build();
+                        .build());
+        if (heartbeatSeconds > 0) {
+            // Search/fetch heartbeat from HeartbeatGuard; without this a dead worker is only
+            // noticed when startToClose expires (measured as ~28s of extra wall time in S4).
+            builder.setHeartbeatTimeout(Duration.ofSeconds(heartbeatSeconds));
+        }
+        return builder.build();
     }
 }

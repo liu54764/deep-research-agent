@@ -31,7 +31,7 @@ public class FetchActivitiesImpl implements ResearchActivities.Fetch {
 
     @Override
     public SourceRef fetch(FetchInput input) {
-        FetchedPage page = webFetcher.fetch(input.url());
+        FetchedPage page = HeartbeatGuard.await(() -> webFetcher.fetch(input.url()));
         if (!page.ok()) {
             log.warn("fetch failed {}: {}", input.url(), page.errorCode());
             return SourceRef.failed(input.url(), page.errorCode());

@@ -4,7 +4,9 @@
 # default, so the drill costs nothing and the timing is deterministic.
 #
 # Prereqs: docker compose up -d mysql redis temporal; mvn -B package -DskipTests
-# Env knobs: TASKS, CONCURRENCY, DEPTH, KILL_AFTER_SECONDS, DOWN_SECONDS, API_URL, API_KEY.
+# Env knobs: TASKS, CONCURRENCY, DEPTH, KILL_AFTER_SECONDS, DOWN_SECONDS, SKIP_KILL=1
+# (control run without fault injection), API_URL, API_KEY. Stub sleeps pass through, e.g.
+# DRA_STUB_SEARCH_MS=15000 makes the kill land inside a search activity.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -17,6 +19,7 @@ CONCURRENCY="${CONCURRENCY:-4}"
 DEPTH="${DEPTH:-QUICK}"
 KILL_AFTER_SECONDS="${KILL_AFTER_SECONDS:-4}"
 DOWN_SECONDS="${DOWN_SECONDS:-20}"
+SKIP_KILL="${SKIP_KILL:-0}"
 JAVA_BIN="${JAVA_BIN:-java}"
 
 API_JAR="$ROOT/dra-api/target/dra-api-0.1.0-SNAPSHOT.jar"
@@ -81,18 +84,23 @@ BENCH_PID=$!
 
 sleep "$KILL_AFTER_SECONDS"
 KILLED_AT=$(date +%s)
-log "killing worker-io pid=$IO_PID"
-kill -9 "$IO_PID" 2>/dev/null || true
-wait "$IO_PID" 2>/dev/null || true
-IO_PID=""
+if [ "$SKIP_KILL" = "1" ]; then
+  log "SKIP_KILL=1: running without fault injection (control run)"
+  RESTARTED_AT=$KILLED_AT
+else
+  log "killing worker-io pid=$IO_PID"
+  kill -9 "$IO_PID" 2>/dev/null || true
+  wait "$IO_PID" 2>/dev/null || true
+  IO_PID=""
 
-log "worker-io down for ${DOWN_SECONDS}s (Temporal retries in-flight io activities)"
-sleep "$DOWN_SECONDS"
+  log "worker-io down for ${DOWN_SECONDS}s (Temporal retries in-flight io activities)"
+  sleep "$DOWN_SECONDS"
 
-log "restarting worker-io"
-DRA_WORKER_ROLES=orchestration,io "$JAVA_BIN" -jar "$WORKER_JAR" >> /tmp/fault-worker-io.log 2>&1 &
-IO_PID=$!
-RESTARTED_AT=$(date +%s)
+  log "restarting worker-io"
+  DRA_WORKER_ROLES=orchestration,io "$JAVA_BIN" -jar "$WORKER_JAR" >> /tmp/fault-worker-io.log 2>&1 &
+  IO_PID=$!
+  RESTARTED_AT=$(date +%s)
+fi
 
 log "waiting for bench"
 BENCH_EXIT=0
