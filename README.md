@@ -9,7 +9,7 @@ Java 21 + Spring Boot 3 + **纯 Temporal** 编排的 Deep Research Agent。设�
 
 - **M2**：多模块骨架 + Flyway 数据层 + Redis 进度流 + REST/SSE + Temporal 三队列 worker + 崩溃恢复。
 - **M6**：真实 LLM 客户端（Spring AI OpenAI 兼容 → DeepSeek）；**真实规划、证据抽取、claim 合成、规则 + 跨模型校验**已接通并落库。
-- **M6.5**：**真实数据源**。`Tavily` 搜索（`dra.search.provider=tavily`）+ 真实网页抓取（`dra.fetch.mode=http`，JDK HttpClient + SSRF 防护 + 逐跳重定向校验 + readability 启发式正文抽取）。证据 quote 由服务端回填为原文精确区间（`anchor_json`），Citation 可回溯到段落。
+- **M6.5**：**真实数据源**。`Tavily` 搜索（`dra.search.provider=tavily`）+ 真实网页抓取（`dra.fetch.mode=http`，JDK HttpClient + SSRF 防护 + 逐跳重定向校验 + readability 启发式正文抽取）。证据 quote 由服务端回填为原文精确区间（`anchor_json`），Citation 可回溯到段落。搜索侧默认过滤 LinkedIn 等噪音域名并支持 Tavily 相关性门槛；请求级 `allowedDomains/excludedDomains` 在取源阶段生效。
 - **M8**：**可交付报告 + 冲突检测**。冲突检测独立成 `conflict.detect.v1`（只并列呈现、不裁决）；报告由模型写正文、**代码拼装事实**：`[[claimId]]` 标记校验失败 fail-closed 剥离、参考文献统一编号去重、统计/方法/局限/未采纳结论章节全部由服务端生成，`GET /report` 同时返回 Markdown 与结构化 JSON。
 
 ## 快速开始
@@ -114,6 +114,8 @@ java -jar dra-worker/target/dra-worker-0.1.0-SNAPSHOT.jar
 ```
 
 抓取器的约束（M1 §8.3）：仅 `text/html` / `text/plain` / `application/xhtml+xml`，静态 HTML，不做 JS 渲染与 PDF；单页上限 3MB、正文截断 50k 字符；手动跟随重定向 ≤ 3 跳且**每一跳重新做 SSRF 校验**（仅 http/https、端口 80/443、拒绝私网/回环/链路本地/云元数据地址）。`DRA_FETCH_MODE=http` 时抓取失败记 `FETCH_*` 错误码并在任务里记 warning，不影响其他来源。
+
+**搜索噪音过滤**：`linkedin.com` 默认在进入候选池前被丢弃（`DRA_SEARCH_EXCLUDED_DOMAINS`，逗号分隔）；LinkedIn 真人主页会因重名（如 "Dan Kafka"）命中技术题，占掉抓取名额且常返回反爬错误。`DRA_SEARCH_MIN_SCORE` 是 Tavily 相关性分数门槛（默认 0 = 关闭，待真实数据验证后再开）。请求体里的 `excludedDomains` / `allowedDomains` 现在在 workflow 取源阶段真正生效（此前只入库未执行）。
 
 **quote 防幻觉闸门（M6.5 强化）**：模型只负责"定位"，服务端负责"回填"。模型给出的 quote 会先做空白/排版归一化（弯引号、破折号、省略号、NBSP、软连字符），去掉模型自己加的包装引号；命中后**存回原文的精确区间**并写入 `evidence.anchor_json`（`{"start":n,"end":m}`），所以库里每条 quote 都是 `source_content` 的逐字子串。省略号拼接只在每一段都按顺序命中原文时才接受，其余一律丢弃并记 `EXTRACT_EMPTY` warning。日志会打印 `extract repaired N quotes...` / `extract rejected N non-verbatim quotes...`，便于观察模型改写率。
 

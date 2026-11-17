@@ -28,6 +28,8 @@ dra:
     tavily-base-url: ${TAVILY_BASE_URL:https://api.tavily.com}
     tavily-search-depth: ${TAVILY_SEARCH_DEPTH:basic}
     timeout-seconds: ${TAVILY_TIMEOUT_SECONDS:30}
+    excluded-domains: ${DRA_SEARCH_EXCLUDED_DOMAINS:linkedin.com}
+    min-score: ${DRA_SEARCH_MIN_SCORE:0.0}
   fetch:
     mode: ${DRA_FETCH_MODE:stub}
     timeout-seconds: ${DRA_FETCH_TIMEOUT_SECONDS:20}

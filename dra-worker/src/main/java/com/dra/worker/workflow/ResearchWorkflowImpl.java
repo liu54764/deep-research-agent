@@ -1,6 +1,7 @@
 package com.dra.worker.workflow;
 
 import com.dra.common.error.ErrorCode;
+import com.dra.common.net.DomainMatcher;
 import com.dra.contracts.activity.ResearchActivities;
 import com.dra.contracts.dto.ClaimDraft;
 import com.dra.contracts.dto.ConflictInput;
@@ -274,10 +275,33 @@ public class ResearchWorkflowImpl implements ResearchWorkflow {
             SearchResult result = searchActivities.search(
                     new SearchInput(ctx.taskId(), round, subQuestion, ctx.topK()));
             charge(result.usage());
-            hits.put(subQuestion.id(), new ArrayList<>(result.hits()));
+            hits.put(subQuestion.id(), new ArrayList<>(keepAllowed(ctx, result.hits())));
             progress(Phase.SEARCH, ++done, total);
         }
         return hits;
+    }
+
+    /**
+     * Applies the request-level domain rules the API has always accepted but never enforced:
+     * excluded domains are dropped, and a non-empty allow list keeps only those hosts.
+     */
+    private static List<SearchHit> keepAllowed(TaskContext ctx, List<SearchHit> hits) {
+        List<SearchHit> kept = new ArrayList<>(hits.size());
+        for (SearchHit hit : hits) {
+            if (hit == null || hit.url() == null) {
+                continue;
+            }
+            String host = DomainMatcher.hostOf(hit.url());
+            if (host == null || DomainMatcher.anyMatch(host, ctx.excludedDomains())) {
+                continue;
+            }
+            if (!ctx.allowedDomains().isEmpty()
+                    && !DomainMatcher.anyMatch(host, ctx.allowedDomains())) {
+                continue;
+            }
+            kept.add(hit);
+        }
+        return kept;
     }
 
     private List<SourceRef> fetch(TaskContext ctx, List<SearchHit> picked) {

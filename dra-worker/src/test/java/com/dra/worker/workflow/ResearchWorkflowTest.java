@@ -54,6 +54,7 @@ class ResearchWorkflowTest {
     private final TaskStub taskStub = new TaskStub();
     private final ClaimStub claimStub = new ClaimStub();
     private final SearchStub searchStub = new SearchStub();
+    private final FetchStub fetchStub = new FetchStub();
 
     @BeforeEach
     void setUp() {
@@ -67,7 +68,7 @@ class ResearchWorkflowTest {
                 ActivityFailureWrapper.wrap(ResearchActivities.Task.class, taskStub),
                 ActivityFailureWrapper.wrap(ResearchActivities.Events.class, new EventStub()),
                 ActivityFailureWrapper.wrap(ResearchActivities.Search.class, searchStub),
-                ActivityFailureWrapper.wrap(ResearchActivities.Fetch.class, new FetchStub()));
+                ActivityFailureWrapper.wrap(ResearchActivities.Fetch.class, fetchStub));
 
         Worker llm = environment.newWorker("drs-llm");
         llm.registerActivitiesImplementations(
@@ -150,6 +151,22 @@ class ResearchWorkflowTest {
                 "business error code was flattened to WORKFLOW_ERROR");
     }
 
+    @Test
+    void requestExcludedDomainsDropMatchingHits() {
+        ResearchWorkflow workflow = environment.getWorkflowClient().newWorkflowStub(
+                ResearchWorkflow.class,
+                WorkflowOptions.newBuilder()
+                        .setTaskQueue(ResearchWorkflow.TASK_QUEUE)
+                        .setWorkflowId("research/test-domains")
+                        .build());
+
+        workflow.run(new ResearchRequest(
+                "task-4", "Temporal vs LangGraph", Depth.QUICK, 5, 500_000, 0, "auto",
+                List.of(), List.of("example.org")));
+
+        assertEquals(0, fetchStub.calls, "excluded domain hits must not reach the fetcher");
+    }
+
     // --- deterministic activity stubs (no Spring, no DB) ---
 
     static final class TaskStub implements ResearchActivities.Task {
@@ -225,8 +242,11 @@ class ResearchWorkflowTest {
     }
 
     static final class FetchStub implements ResearchActivities.Fetch {
+        int calls;
+
         @Override
         public SourceRef fetch(FetchInput input) {
+            calls++;
             return new SourceRef("source-" + Math.abs(input.url().hashCode()), input.url(),
                     "Fetched", true, null, "hash", 100);
         }

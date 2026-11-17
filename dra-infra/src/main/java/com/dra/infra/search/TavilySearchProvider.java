@@ -2,6 +2,7 @@ package com.dra.infra.search;
 
 import com.dra.common.error.DraException;
 import com.dra.common.error.ErrorCode;
+import com.dra.common.net.DomainMatcher;
 import com.dra.contracts.dto.SearchHit;
 import com.dra.contracts.dto.SearchResult;
 import com.dra.contracts.dto.Usage;
@@ -10,6 +11,8 @@ import com.dra.infra.http.OutboundHttpClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -24,6 +27,8 @@ import java.util.List;
 @Component
 @ConditionalOnProperty(prefix = "dra.search", name = "provider", havingValue = "tavily")
 public class TavilySearchProvider implements SearchPort {
+
+    private static final Logger log = LoggerFactory.getLogger(TavilySearchProvider.class);
 
     private final OutboundHttpClient http;
     private final SearchProperties properties;
@@ -74,9 +79,20 @@ public class TavilySearchProvider implements SearchPort {
             List<SearchHit> hits = new ArrayList<>();
             JsonNode results = root.path("results");
             int rank = 1;
+            int dropped = 0;
             for (JsonNode result : results) {
                 String url = result.path("url").asText("");
                 if (url.isBlank()) {
+                    continue;
+                }
+                if (properties.getMinScore() > 0
+                        && result.path("score").asDouble(1.0) < properties.getMinScore()) {
+                    dropped++;
+                    continue;
+                }
+                if (DomainMatcher.anyMatch(DomainMatcher.hostOf(url),
+                        properties.getExcludedDomains())) {
+                    dropped++;
                     continue;
                 }
                 hits.add(new SearchHit(
@@ -87,6 +103,10 @@ public class TavilySearchProvider implements SearchPort {
                         "tavily",
                         result.path("published_date").asText(null)));
                 rank++;
+            }
+            if (dropped > 0) {
+                log.debug("tavily dropped {} noisy results for query {}", dropped,
+                        truncate(query, 80));
             }
             return new SearchResult(hits, "tavily", Usage.ZERO, latencyMs);
         } catch (DraException e) {
